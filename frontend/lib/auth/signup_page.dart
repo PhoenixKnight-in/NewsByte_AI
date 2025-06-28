@@ -2,18 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
 
-class LoginPage extends StatefulWidget {
-  LoginPage({super.key});
+class SignupPage extends StatefulWidget {
+  SignupPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<SignupPage> createState() => _SignupPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _SignupPageState extends State<SignupPage> {
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   @override
   void dispose() {
+    nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -34,22 +36,25 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 30),
               Text(
-                "Login",
+                "Sign Up. To get",
                 style: TextStyle(
                   fontSize: 40,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF21005D),
                 ),
               ),
-              const SizedBox(height: 15),
+
+              const SizedBox(height: 15,),
               Text(
-                "Welcome back",
+                "Instant News from your ❤ Channels",
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFFFF7B07),
                 ),
               ),
+              const SizedBox(height: 15),
+              CustomField(hint_text: "Username", controller: nameController),
               const SizedBox(height: 15),
               CustomField(hint_text: "Email", controller: emailController),
               const SizedBox(height: 15),
