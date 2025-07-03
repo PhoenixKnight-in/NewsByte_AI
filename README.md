@@ -1,21 +1,3 @@
-<<<<<<< HEAD
-# frontend
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
 #  NewsByte AI – Real-Time AI-Powered News Summarizer
 
 **NewsByte AI** is a mobile app that delivers real-time, concise news summaries from YouTube news channels and online articles using cutting-edge AI technologies like Whisper and GPT. Stay informed without the noise — just the essence of breaking news.
@@ -61,4 +43,3 @@ samples, guidance on mobile development, and a full API reference.
 ```bash
 git clone https://github.com/yourusername/newsbyte-ai.git
 pip install -r requirements.txt
->>>>>>> 6344990e4e90c3fdcaba16aeb3c158b11f9b4b5f
