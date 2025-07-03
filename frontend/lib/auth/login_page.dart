@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/signup_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
+import 'package:frontend/home_page.dart';
 
 class LoginPage extends StatefulWidget {
   LoginPage({super.key});
@@ -61,7 +63,15 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 15.0),
 
-              AuthButton(button_text: "Login", onTap: () {}),
+              AuthButton(
+                button_text: "Login",
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => HomePage(),
+                  ),
+                  );
+                },
+              ),
             ],
           ),
         ),

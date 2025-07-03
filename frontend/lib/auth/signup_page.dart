@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/login_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
 
@@ -66,7 +67,12 @@ class _SignupPageState extends State<SignupPage> {
 
               const SizedBox(height: 15.0),
 
-              AuthButton(button_text: "Login", onTap: () {}),
+              AuthButton(button_text: "Login", onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => LoginPage(),
+                  ),
+                  );
+              }),
             ],
           ),
         ),
