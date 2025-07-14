@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/widget/saved_news_page.dart';
+import 'package:frontend/auth/widget/user_details_page.dart';
+import 'package:frontend/channels_page.dart';
+
 import 'channels_page.dart';
 
 class HomePage extends StatelessWidget {
@@ -10,12 +14,38 @@ class HomePage extends StatelessWidget {
       length: 3, // For You, Sports, Entertainment
       child: Scaffold(
         backgroundColor: const Color(0xFFF2F4F8),
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: const [
+              DrawerHeader(
+                decoration: BoxDecoration(color: Colors.deepPurple),
+                child: Text(
+                  'Menu',
+                  style: TextStyle(color: Colors.white, fontSize: 24),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.settings),
+                title: Text('Settings'),
+              ),
+              ListTile(
+                leading: Icon(Icons.info),
+                title: Text('About'),
+              ),
+            ],
+          ),
+        ),
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          leading: const Padding(
-            padding: EdgeInsets.all(10),
-            child: Icon(Icons.menu, color: Colors.black),
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.black),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
+            ),
           ),
           title: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -37,10 +67,15 @@ class HomePage extends StatelessWidget {
             ],
           ),
           centerTitle: true,
-          actions: const [
-            Padding(
-              padding: EdgeInsets.all(10),
-              child: Icon(Icons.person_outline, color: Colors.black),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person_outline, color: Colors.black),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const UserDetailsPage()),
+                );
+              },
             ),
           ],
           bottom: const TabBar(
@@ -65,6 +100,14 @@ class HomePage extends StatelessWidget {
           currentIndex: 0,
           selectedItemColor: Colors.deepPurple,
           unselectedItemColor: Colors.grey,
+          onTap: (index) {
+            if (index == 1) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SavedNewsPage()),
+              );
+            }
+          },
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home),
@@ -85,7 +128,6 @@ class HomePage extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 15),
-
           // 📰 First News
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
@@ -138,19 +180,16 @@ class HomePage extends StatelessWidget {
 
           const SizedBox(height: 30),
 
-          // ✅ Button at the very bottom
+          // ✅ Explore Button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const ChannelsPage(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const ChannelsPage()),
                 );
               },
-
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4B0082),
                 padding: const EdgeInsets.symmetric(vertical: 15),
@@ -161,10 +200,7 @@ class HomePage extends StatelessWidget {
               ),
               child: const Text(
                 "Explore more channels here",
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white,
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ),
