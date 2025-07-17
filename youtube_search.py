@@ -1,16 +1,25 @@
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 from transformers import pipeline
-
+from time import datetime
 
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 API_KEY = 'AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc' 
-query = 'latest news India Times Now'
-max_results = 3
+query = "Today's latest news India Times Now"
+max_results = 10
 
+channel_id = 'UC6RJ7-PaXg6TIH2BzZfTV7w'
+today = datetime.utcnow().date().isoformat() + "T00:00:00Z"
 
-search_url = f'https://www.googleapis.com/youtube/v3/search?part=snippet&q={query}&type=video&maxResults={max_results}&key={API_KEY}'
+# 🔎 Search URL for today's videos from Times Now
+search_url = (
+    f'https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}'
+    f'&publishedAfter={today}&type=video&maxResults={max_results}&key={API_KEY}'
+)
+search_url = f'https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&q={query}&type=video&maxResults={max_results}&key={API_KEY}'
+
+#search_url = f'https://www.googleapis.com/youtube/v3/search?part=snippet&q={query}&type=video&maxResults={max_results}&key={API_KEY}'
 response = requests.get(search_url)
 
 if response.status_code == 200:
