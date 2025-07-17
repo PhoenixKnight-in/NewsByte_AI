@@ -6,7 +6,7 @@ from transformers import pipeline
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 API_KEY = 'AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc' 
-query = 'latest news India'
+query = 'latest news India Times Now'
 max_results = 3
 
 
