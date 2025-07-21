@@ -28,3 +28,4 @@ async def update_user(id,user: User):
 @user.delete('/{id}')
 async def delete_user(id,user: User):
    return userEntity(con.local.user.find_one_and_delete({"_id":ObjectId(id)}))
+

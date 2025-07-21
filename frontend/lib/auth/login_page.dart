@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/signup_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
 
@@ -65,7 +66,29 @@ class _LoginPageState extends State<LoginPage> {
                 onTap: () {
                   Navigator.pushNamed(context, '/home');
                 },
-              )
+              ),
+              const SizedBox(height: 15.0),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => SignupPage()),
+                  );
+                },
+              
+              child: RichText(
+                  text: TextSpan(
+                    text: "Don't have an account? ",
+                    style: Theme.of(context).textTheme.titleMedium,
+                    children: const [
+                      TextSpan(
+                        text: "Sign up",
+                        style: TextStyle(color:Color(0xFFFF7B07) ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
             ],
           ),
