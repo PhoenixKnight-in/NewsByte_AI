@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/login_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
 
@@ -46,7 +47,7 @@ class _SignupPageState extends State<SignupPage> {
 
               const SizedBox(height: 15,),
               Text(
-                "Instant News from your ❤ Channels",
+                "Instant News from NewsByte",
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -71,7 +72,29 @@ class _SignupPageState extends State<SignupPage> {
                 onTap: () {
                   Navigator.pushNamed(context, '/home');
                 },
-              )
+              ),
+              const SizedBox(height: 15.0),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginPage()),
+                  );
+                },
+              
+              child: RichText(
+                  text: TextSpan(
+                    text: "Already have an account? ",
+                    style: Theme.of(context).textTheme.titleMedium,
+                    children: const [
+                      TextSpan(
+                        text: "Sign in",
+                        style: TextStyle(color:Color(0xFFFF7B07) ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
             ],
           ),

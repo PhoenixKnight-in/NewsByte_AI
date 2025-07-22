@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'auth/login_page.dart';
 import 'auth/signup_page.dart';
 import 'home_page.dart'; // Make sure this is imported
-
+ 
 void main() {
   runApp(const MyApp());
 }

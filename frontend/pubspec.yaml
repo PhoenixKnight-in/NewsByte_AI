@@ -64,6 +64,12 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - assets/
+    - assets/Canada_G7_Summit_44906.jpg
+    - assets/2nd_news.jpg.avif
+    - assets/1st.jpg
+    - assets/2nd.png
+    - assets/3rd.png
+    - assets/4th.jpeg
 
 
   # An image asset can refer to one or more resolution-specific "variants", see
