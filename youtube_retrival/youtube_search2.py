@@ -3,28 +3,26 @@ from datetime import datetime, timedelta, timezone
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from transformers import pipeline
+import time
+from urllib.parse import quote_plus
 
-# Initialize the summarizer pipeline
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-
-API_KEY = 'AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc'
-query = 'NDTV latest news'
+API_KEY = "AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc"
+query = quote_plus('NDTV latest news')
 max_results = 50
 minutes_ago = 500
 
-# Calculate time threshold
 time_threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
-published_after = time_threshold.isoformat(timespec="seconds").replace("+00:00", "Z")
+published_after =time_threshold.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-# Build the search URL
 search_url = (
     f'https://www.googleapis.com/youtube/v3/search?part=snippet'
     f'&q={query}&type=video&maxResults={max_results}'
     f'&order=date&publishedAfter={published_after}&key={API_KEY}'
 )
 
-# Function to detect YouTube Shorts based on duration
 def is_short(video_id):
+    time.sleep(1)
     video_url = (
         f"https://www.googleapis.com/youtube/v3/videos?part=contentDetails"
         f"&id={video_id}&key={API_KEY}"
@@ -52,7 +50,6 @@ def is_short(video_id):
             return True
     return True
 
-# Function to split long text into manageable chunks
 def chunk_text(text, max_chunk_length=1000):
     words = text.split()
     chunks = []
@@ -69,9 +66,21 @@ def chunk_text(text, max_chunk_length=1000):
         chunks.append(" ".join(current_chunk))
 
     return chunks
-
-# Make the API request to get search results
+time.sleep(1)
 response = requests.get(search_url)
+def is_age_restricted(video_id):
+    video_url = f"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id={video_id}&key={API_KEY}"
+    res = requests.get(video_url)
+    if res.status_code != 200:
+        return False  
+    
+    details = res.json()
+    items = details.get("items", [])
+    if not items:
+        return False
+    
+    return items[0].get("contentDetails", {}).get("contentRating", {}).get("ytRating") == "ytAgeRestricted"
+
 
 if response.status_code == 200:
     data = response.json()
@@ -80,32 +89,35 @@ if response.status_code == 200:
     video_count = 0
 
     for item in items:
+        time.sleep(1)
         video_id = item['id']['videoId']
         title = item['snippet']['title']
         thumbnail = item['snippet']['thumbnails']['high']['url']
         video_url = f"https://www.youtube.com/watch?v={video_id}"
+        if is_age_restricted(video_id):
+            continue
 
         if is_short(video_id):
             continue
 
         try:
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en','a.en'])
             if not transcript_data:
                 print(f"No transcript data available for {video_url}")
                 continue
 
-            # Combine transcript segments into one text
+            
             transcript_text = " ".join([segment.get('text', '') for segment in transcript_data])
 
             if transcript_text.strip():
-                # Chunk and summarize
+                
                 transcript_chunks = chunk_text(transcript_text, max_chunk_length=1000)
                 summaries = []
 
                 for chunk in transcript_chunks:
                     try:
                         if len(chunk.split()) < 15:
-                            # If the chunk is too small, skip summarization or use it directly
+                            
                             summaries.append(chunk)
                         else:
                             summary = summarizer(chunk, max_length=50, min_length=15, do_sample=False)[0]['summary_text']
@@ -118,7 +130,7 @@ if response.status_code == 200:
                 print(f"\n{count}. Title: {title}")
                 print(f" Video Link: {video_url}")
                 print(f" Thumbnail: {thumbnail}")
-                print(f" Summary: {final_summary}\n")
+                print(f" Transcript: {final_summary}\n")
 
                 count += 1
                 video_count += 1
