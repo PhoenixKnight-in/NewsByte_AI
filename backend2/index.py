@@ -91,7 +91,7 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
 # ---------------------------
 # Routes
 # ---------------------------
-@app.post("/register")
+@app.post("/signup")
 async def register_user(user: User = Body(...)):
     if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -101,7 +101,7 @@ async def register_user(user: User = Body(...)):
     users_collection.insert_one(user_dict)
     return {"message": "User registered successfully"}
 
-@app.post("/token", response_model=Token)
+@app.post("/login", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:

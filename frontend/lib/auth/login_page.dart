@@ -1,28 +1,63 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/constants/server_constant.dart';
 import 'package:frontend/auth/signup_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
-  LoginPage({super.key});
+  const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final emailController = TextEditingController();
+  final nameController = TextEditingController();
   final passwordController = TextEditingController();
+
+  Future<void> loginUser() async {
+    final username = nameController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    final response = await http.post(
+      Uri.parse('${ServerConstant.serverURL}/login'), // update this URL
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {'username': username, 'password': password},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', data['access_token']);
+
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${response.reasonPhrase}')),
+      );
+    }
+  }
+
   @override
   void dispose() {
-    emailController.dispose();
+    nameController.dispose();
     passwordController.dispose();
     super.dispose();
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: AppBar(),
       backgroundColor: Color(0xFFF2F4F8),
       body: Padding(
         padding: const EdgeInsets.only(top: 50.0, left: 15, right: 15),
@@ -52,21 +87,15 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 15),
-              CustomField(hint_text: "Email", controller: emailController),
+              CustomField(hint_text: "Username", controller: nameController),
               const SizedBox(height: 15),
               CustomField(
                 hint_text: "Password",
                 controller: passwordController,
                 isObscureText: true,
               ),
-
               const SizedBox(height: 15.0),
-              AuthButton(
-                button_text: "Login",
-                onTap: () {
-                  Navigator.pushNamed(context, '/home');
-                },
-              ),
+              AuthButton(button_text: "Login", onTap: loginUser),
               const SizedBox(height: 15.0),
               GestureDetector(
                 onTap: () {
@@ -75,21 +104,19 @@ class _LoginPageState extends State<LoginPage> {
                     MaterialPageRoute(builder: (context) => SignupPage()),
                   );
                 },
-              
-              child: RichText(
+                child: RichText(
                   text: TextSpan(
                     text: "Don't have an account? ",
                     style: Theme.of(context).textTheme.titleMedium,
                     children: const [
                       TextSpan(
                         text: "Sign up",
-                        style: TextStyle(color:Color(0xFFFF7B07) ),
+                        style: TextStyle(color: Color(0xFFFF7B07)),
                       ),
                     ],
                   ),
                 ),
               ),
-
             ],
           ),
         ),

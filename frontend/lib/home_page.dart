@@ -128,7 +128,7 @@ class HomePage extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 15),
-          // 📰 First News
+          //  First News
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
@@ -154,7 +154,7 @@ class HomePage extends StatelessWidget {
 
           const SizedBox(height: 30),
 
-          // 📰 Second News
+          //  Second News
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
@@ -180,7 +180,7 @@ class HomePage extends StatelessWidget {
 
           const SizedBox(height: 30),
 
-          // ✅ Explore Button
+          //  Explore Button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ElevatedButton(

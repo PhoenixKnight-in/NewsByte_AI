@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:frontend/auth/constants/server_constant.dart';
 import 'package:frontend/auth/login_page.dart';
 import 'package:frontend/auth/widget/auth_button.dart';
 import 'package:frontend/auth/widget/customfield.dart';
+import 'package:http/http.dart' as http;
 
 class SignupPage extends StatefulWidget {
   SignupPage({super.key});
@@ -14,6 +17,48 @@ class _SignupPageState extends State<SignupPage> {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+
+  Future<void> signupUser() async {
+    print("User signing in");
+    final name = nameController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('All fields are required')));
+      return;
+    }
+
+    final response = await http.post(
+      Uri.parse('${ServerConstant.serverURL}/signup'), // update with actual URL
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': name,
+        'email': email,
+        'password': password,
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Signup successful! Please login.')),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginPage()),
+      );
+    } else {
+      final error = jsonDecode(response.body);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Signup failed: ${error['detail'] ?? 'Try again'}'),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     nameController.dispose();
@@ -22,9 +67,9 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: AppBar(),
       backgroundColor: Color(0xFFF2F4F8),
       body: Padding(
         padding: const EdgeInsets.only(top: 50.0, left: 15, right: 15),
@@ -44,8 +89,7 @@ class _SignupPageState extends State<SignupPage> {
                   color: Color(0xFF21005D),
                 ),
               ),
-
-              const SizedBox(height: 15,),
+              const SizedBox(height: 15),
               Text(
                 "Instant News from NewsByte",
                 style: TextStyle(
@@ -64,38 +108,29 @@ class _SignupPageState extends State<SignupPage> {
                 controller: passwordController,
                 isObscureText: true,
               ),
-
               const SizedBox(height: 15.0),
-
-              AuthButton(
-                button_text: "Login", // or "Sign Up"
-                onTap: () {
-                  Navigator.pushNamed(context, '/home');
-                },
-              ),
+              AuthButton(button_text: "Sign Up", onTap: signupUser),
               const SizedBox(height: 15.0),
               GestureDetector(
                 onTap: () {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (context) => LoginPage()),
                   );
                 },
-              
-              child: RichText(
+                child: RichText(
                   text: TextSpan(
                     text: "Already have an account? ",
                     style: Theme.of(context).textTheme.titleMedium,
                     children: const [
                       TextSpan(
                         text: "Sign in",
-                        style: TextStyle(color:Color(0xFFFF7B07) ),
+                        style: TextStyle(color: Color(0xFFFF7B07)),
                       ),
                     ],
                   ),
                 ),
               ),
-
             ],
           ),
         ),
