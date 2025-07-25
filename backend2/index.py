@@ -11,35 +11,31 @@ from models.token import Token
 from models.token_data import TokenData
 from models.user import User, UserInDB
 
-# ---------------------------
+
 # MongoDB Configuration
-# ---------------------------
+
 MONGO_URI = "mongodb+srv://phoenixknight-in:Phoenix18.in@cluster.xopt5jz.mongodb.net/"
 client = MongoClient(MONGO_URI)
 db = client["NewsByte_AI"]
 users_collection = db["users"]
 
-# ---------------------------
+
 # JWT Configuration
-# ---------------------------
+
 SECRET_KEY = "83daa0256a2289b0fb23693bf1f6034d44396675749244721a2b20e896e11662"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# ---------------------------
+
 # FastAPI App
-# ---------------------------
+
 app = FastAPI()
 
-# ---------------------------
 # Security & Models
-# ---------------------------
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# ---------------------------
-# Utility Functions
-# ---------------------------
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -88,9 +84,7 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-# ---------------------------
 # Routes
-# ---------------------------
 @app.post("/signup")
 async def register_user(user: User = Body(...)):
     if get_user(user.username):

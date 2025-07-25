@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:frontend/auth/widget/saved_news_page.dart';
 import 'package:frontend/auth/widget/user_details_page.dart';
 import 'package:frontend/channels_page.dart';
-
-import 'channels_page.dart';
+//import 'package:frontend/channels_page.dart';
+import 'package:frontend/home/GNewsService.dart';
+//import 'package:frontend/services/gnews_service.dart'; // Add this line
+import 'package:frontend/home/GNewsService.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -17,7 +19,7 @@ class HomePage extends StatelessWidget {
         drawer: Drawer(
           child: ListView(
             padding: EdgeInsets.zero,
-            children: const [
+            children: [
               DrawerHeader(
                 decoration: BoxDecoration(color: Colors.deepPurple),
                 child: Text(
@@ -25,13 +27,19 @@ class HomePage extends StatelessWidget {
                   style: TextStyle(color: Colors.white, fontSize: 24),
                 ),
               ),
+              ListTile(leading: Icon(Icons.settings), title: Text('Settings')),
+              ListTile(leading: Icon(Icons.info), title: Text('About')),
               ListTile(
-                leading: Icon(Icons.settings),
-                title: Text('Settings'),
-              ),
-              ListTile(
-                leading: Icon(Icons.info),
-                title: Text('About'),
+                leading: Icon(Icons.add_box),
+                title: Text("Explore Channels"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ChannelsPage(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -73,7 +81,9 @@ class HomePage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const UserDetailsPage()),
+                  MaterialPageRoute(
+                    builder: (context) => const UserDetailsPage(),
+                  ),
                 );
               },
             ),
@@ -91,9 +101,9 @@ class HomePage extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildForYouTab(context),
-            const Center(child: Text("Sports Tab")),
-            const Center(child: Text("Entertainment Tab")),
+            _buildNewsTab('general'), // "For You" -> General
+            _buildNewsTab('sports'), // Sports
+            _buildNewsTab('entertainment'), // Entertainment
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -109,105 +119,66 @@ class HomePage extends StatelessWidget {
             }
           },
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: '',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bookmark),
-              label: '',
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
+            BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: ''),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildForYouTab(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          const SizedBox(height: 15),
-          //  First News
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
-              'assets/Canada_G7_Summit_44906.jpg',
-              width: double.infinity,
-              height: 200,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(height: 15),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              "G7 summit LIVE: Leaders fail to reach ambitious joint agreements on key issues after Trump’s exit",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                color: Colors.black,
+  Widget _buildNewsTab(String topic) {
+    return FutureBuilder<List<dynamic>>(
+      future: GNewsService.fetchNews(topic),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        } else if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text('No news available.'));
+        }
+
+        final articles = snapshot.data!;
+        return ListView.builder(
+          itemCount: articles.length,
+          itemBuilder: (context, index) {
+            final article = articles[index];
+            return Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (article['image'] != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        article['image'],
+                        height: 200,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Text(
+                    article['title'] ?? 'No title',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    article['description'] ?? '',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const Divider(height: 30, thickness: 1),
+                ],
               ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          //  Second News
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
-              'assets/2nd_news.jpg.avif',
-              width: double.infinity,
-              height: 200,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(height: 15),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              "India vs England LIVE Score, 2nd Test Day 2: Ravindra Jadeja departs for 89, IND 416/6 vs ENG in Edgbaston",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                color: Colors.black,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          //  Explore Button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ChannelsPage()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4B0082),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                "Explore more channels here",
-                style: TextStyle(fontSize: 16, color: Colors.white),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 30),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }

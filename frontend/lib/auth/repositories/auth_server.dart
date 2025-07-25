@@ -7,6 +7,8 @@ class AuthService {
   static final String serverUrl = ServerConstant.serverURL; 
 
   static Future<bool> login(String username, String password) async {
+    print('Server URL: $serverUrl');
+    
     final response = await http.post(
       Uri.parse('$serverUrl/login'),
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},

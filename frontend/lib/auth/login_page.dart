@@ -30,7 +30,7 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     final response = await http.post(
-      Uri.parse('${ServerConstant.serverURL}/login'), // update this URL
+      Uri.parse('${ServerConstant.serverURL}/login'), 
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body: {'username': username, 'password': password},
     );
