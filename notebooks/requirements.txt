@@ -1,0 +1,233 @@
+tavily-python>=0.3.0
+python-dotenv>=1.0.0
+argparse
+🤖 AI News Summarizer
+A comprehensive AI-powered news summarization system that fetches and processes the latest technology news using advanced search APIs.
+📋 Project Overview
+This project is part of a team development effort to create an intelligent news summarization application. The system uses Tavily API for web search and provides structured, categorized news summaries.
+✨ Features
+
+Multi-Category News Fetching: AI, Technology, Business, Crypto, Cybersecurity
+Custom Topic Search: Search for any specific topic
+Trending Topics Detection: Get the latest trending technology news
+Interactive CLI Interface: User-friendly command-line interaction
+Automated Report Generation: Comprehensive formatted reports
+File Export: Save reports in text format
+Configurable Parameters: Customize results count and time range
+
+🚀 Installation
+Prerequisites
+
+Python 3.8 or higher
+pip package manager
+Tavily API key
+
+Setup Steps
+
+Clone the repository
+bashgit clone <your-repo-url>
+cd AiNewsSummary
+
+Create virtual environment
+bashpython -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
+
+Install dependencies
+bashpip install -r requirements.txt
+
+Environment Configuration
+Create a .env file in the root directory:
+envTAVILY_API_KEY=your_tavily_api_key_here
+
+
+💻 Usage
+Interactive Mode (Recommended)
+bashpython src/main.py -i
+Command Line Options
+Generate Category Report
+bashpython src/main.py -c ai --save
+python src/main.py -c tech -r 10 -d 5
+Custom Topic Search
+bashpython src/main.py -t "OpenAI ChatGPT" -r 5
+python src/main.py -t "Tesla Cybertruck" --save
+Comprehensive Report
+bashpython src/main.py --comprehensive --save
+python src/main.py --comprehensive --categories "ai,crypto,startup" -r 3
+Trending Topics
+bashpython src/main.py --trending -r 10
+Available Categories
+
+ai - Artificial Intelligence & Machine Learning
+tech - General Technology News
+business - Business & Technology Companies
+crypto - Cryptocurrency & Blockchain
+cybersecurity - Security & Data Protection
+startup - Startup Funding & New Companies
+
+📁 Project Structure
+AiNewsSummary/
+├── src/
+│   ├── main.py              # Main entry point
+│   ├── news_summarizer.py   # Core summarizer class
+├── notebooks/
+│   └── test_crewai.ipynb    # Development notebook
+├── outputs/                 # Generated reports
+├── data/                    # Data storage (if needed)
+├── .env                     # Environment variables
+├── requirements.txt         # Dependencies
+└── README.md               # This file
+🛠️ Technical Details
+Core Components
+
+AINewsSummarizer Class
+
+Main class handling news fetching and processing
+Integration with Tavily API for web search
+Flexible category and custom search support
+
+
+Interactive CLI Interface
+
+User-friendly command-line interaction
+Multiple operation modes
+Error handling and validation
+
+
+Report Generation
+
+Structured formatting for readability
+Multiple output formats
+Automated file naming with timestamps
+
+
+
+API Integration
+
+Tavily API: Used for web search and news fetching
+Error Handling: Comprehensive error management
+Rate Limiting: Respects API limitations
+
+📊 Output Examples
+Sample Category Report
+================================================================================
+📰 AI NEWS SUMMARY
+📅 Generated: 2024-07-28 14:30:22
+📊 Found: 3 articles from last 7 days
+================================================================================
+
+1. 📌 OpenAI Announces GPT-5 Development Timeline
+   🔗 Source: https://example.com/news/gpt5
+   📝 Summary: OpenAI has revealed preliminary details about GPT-5...
+   ⭐ Relevance Score: 0.95
+   --------------------------------------------------------------------------------
+Comprehensive Report Structure
+
+Multiple categories in single report
+Timestamp and metadata
+Organized article listing
+Relevance scoring
+Source attribution
+
+🧪 Development & Testing
+Jupyter Notebook
+Use notebooks/test_crewai.ipynb for:
+
+API testing and validation
+Feature development
+Interactive exploration
+
+Running Tests
+bash# Test basic functionality
+python src/main.py -c ai -r 1
+
+# Test comprehensive report
+python src/main.py --comprehensive --categories "ai" -r 1
+🤝 Team Development
+Current Team Structure
+
+LLM Integration: Your role
+Frontend Development: Team member 2
+Backend API: Team member 3
+Database Integration: Team member 4
+Deployment: Team member 5
+Testing & QA: Team member 6
+
+Git Workflow
+
+Create feature branches
+Make changes in your assigned area
+Test thoroughly
+Submit pull requests
+Code review process
+
+🔧 Configuration Options
+Environment Variables
+envTAVILY_API_KEY=your_tavily_api_key
+OPENAI_API_KEY=your_openai_key (optional)
+MAX_DAILY_REQUESTS=1000
+DEFAULT_DAYS_BACK=7
+DEFAULT_MAX_RESULTS=5
+Customization
+
+Add new categories in news_summarizer.py
+Modify output formatting
+Extend CLI options in main.py
+
+📈 Performance Metrics
+
+Search Speed: ~2-5 seconds per category
+API Efficiency: Optimized request batching
+Memory Usage: Low memory footprint
+Error Recovery: Automatic retry mechanisms
+
+🚨 Troubleshooting
+Common Issues
+
+API Key Errors
+Error: Tavily API key not found
+Solution: Check .env file configuration
+
+Network Timeouts
+Error: Request timeout
+Solution: Check internet connection, retry after few minutes
+
+Empty Results
+No articles found
+Solution: Try different search terms or increase days parameter
+
+
+🔮 Future Enhancements
+
+ Web interface development
+ Database integration for historical data
+ Email notification system
+ Advanced NLP summarization
+ Multi-language support
+ Real-time news streaming
+ Sentiment analysis integration
+
+📄 License
+This project is developed as part of a team collaboration for educational purposes.
+👥 Contributors
+
+Your Name - LLM Integration & Core Development
+Team Member 2 - Frontend Development
+Team Member 3 - Backend API
+Team Member 4 - Database Integration
+Team Member 5 - DevOps & Deployment
+Team Member 6 - Testing & Quality Assurance
+
+📞 Support
+For technical issues or questions:
+
+Check the troubleshooting section
+Review error logs in console output
+Contact team lead or create issue in repository
+
+
+⚡ Powered by AI & Python | Built with ❤️ by the team
