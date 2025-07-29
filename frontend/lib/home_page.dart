@@ -5,7 +5,7 @@ import 'package:frontend/channels_page.dart';
 //import 'package:frontend/channels_page.dart';
 import 'package:frontend/home/GNewsService.dart';
 //import 'package:frontend/services/gnews_service.dart'; // Add this line
-import 'package:frontend/home/GNewsService.dart';
+//import 'package:frontend/home/GNewsService.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});

@@ -28,12 +28,9 @@ def test_small_model():
         
         # Test news text for summarization
         news_text = """
-        The Indian government announced new policies for renewable energy sector today. 
-        The policy includes subsidies for solar panel installations and wind energy projects. 
-        This initiative is expected to create thousands of jobs and reduce carbon emissions significantly. 
-        The Prime Minister said this move will help India achieve its climate goals by 2030. 
-        Industry experts believe this could revolutionize India's energy landscape and attract 
-        foreign investments in the green energy sector.
+        A political storm has erupted in Telangana following sensational claims by BJP MP CM Romesh.
+        He alleged that BRS working president Katy Ramaro had offered to have an alliance or merge with the BRS with or with merge the Romesh Romesh's comments actually came as a reaction to KT Raaro making making an 
+        allegation saying that his son's company had got a 1600 cr rupee project from the Raantradi government."
         """
         
         print("Generating summary...")

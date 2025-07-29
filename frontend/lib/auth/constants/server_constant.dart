@@ -1,11 +1,11 @@
-import 'dart:io';
+//import 'dart:io';
 
 class ServerConstant {
   //static const String serverURL = "http://172.17.180.87:8000";
   // static String serverURL = Platform.isAndroid
   //     ? "http://10.0.2.2:8000"
-  //     : "http://172.17.180.87:8000";
-  static const String serverURL = "http://172.17.180.87:8000";
+  //     : "http://172.17.180.87:8000";172.18.220.103
+  static const String serverURL = "http://172.18.220.103:8000";
 
   //static String serverURL = ;
 }

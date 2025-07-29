@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'auth/widget/channel_details_page.dart';
-import 'channel_details_page.dart';
+//import 'channel_details_page.dart';
 
 class ChannelsPage extends StatelessWidget {
   const ChannelsPage({super.key});
