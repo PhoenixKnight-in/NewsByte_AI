@@ -117,10 +117,17 @@ class HomePage extends StatelessWidget {
                 MaterialPageRoute(builder: (context) => const SavedNewsPage()),
               );
             }
+            if (index == 2) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ChannelsPage()),
+                );
+              }
           },
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-            BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: ''),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Saved'),
+            BottomNavigationBarItem(icon: Icon(Icons.add_box),label:'Explore Channels')
           ],
         ),
       ),
