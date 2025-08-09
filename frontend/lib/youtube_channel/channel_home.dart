@@ -112,8 +112,6 @@ class ChannelHPage extends StatelessWidget {
         body: TabBarView(
           children: [
             _buildNewsTab("$channelName", '$channelID'), // "For You" -> General
-            // _buildNewsTab("$channelName",'$ch'), // Sports
-            // _buildNewsTab("$channelName",'NDTV Politics'), // Entertainment
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
