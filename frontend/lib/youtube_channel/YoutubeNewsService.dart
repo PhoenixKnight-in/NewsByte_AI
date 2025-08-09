@@ -11,7 +11,7 @@ class YouTubeNewsService {
     final params = {
       'query': query,
       'num_videos': '20',
-      'minutes_ago':'1440',
+      'minutes_ago':'2000',
       if (channelId != null) 'channel_id': channelId,
     };
     final uri = Uri.parse('$baseUrl/get_latest_news').replace(queryParameters: params);
