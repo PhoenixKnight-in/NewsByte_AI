@@ -18,22 +18,9 @@ def detect_genre(text):
     else:
         return 'default'
     
-API_KEY = 'AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc'
-query = 'Sports latest news'
-num_videos_to_fetch = 1
-minutes_ago = 500
-
-time_threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
-published_after = time_threshold.isoformat(timespec="seconds").replace("+00:00", "Z")
-
-search_url = (
-    f'https://www.googleapis.com/youtube/v3/search?part=snippet'
-    f'&q={query}&type=video&maxResults=10'
-    f'&order=date&safeSearch=strict&publishedAfter={published_after}&key={API_KEY}'
-)
 
 
-def is_short(video_id):
+def is_short(video_id,API_KEY):
     video_url = (
         f"https://www.googleapis.com/youtube/v3/videos?part=contentDetails"
         f"&id={video_id}&key={API_KEY}"
@@ -54,21 +41,34 @@ def is_short(video_id):
         return True
     
 
-def get_latest_news_transcript_cleaned():
+def get_latest_news_transcript_cleaned(query = 'NDTV Sports latest news',num_videos_to_fetch = 10,minutes_ago = 1440,channel_id= "UCZFMm1mMw0F81Z37aaEzTUA"):
+    API_KEY = 'AIzaSyC4DYeF37H6WGWP9ISVsnWjoaWgrgLHXSc'
+
+    time_threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    published_after = time_threshold.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    search_url = (
+        f'https://www.googleapis.com/youtube/v3/search?part=snippet'
+        f'&q={query}&type=video&maxResults={num_videos_to_fetch}'
+        f'&order=date&safeSearch=strict&publishedAfter={published_after}&key={API_KEY}'
+    )
+    if channel_id:
+        base += f"&channelId={channel_id}"
+
     response = requests.get(search_url)
     if response.status_code != 200:
         return f"Error: Failed to fetch videos. Status Code: {response.status_code}"
 
     data = response.json()
     items = data.get('items', [])
-
+    results = []
     for item in items:
         video_id = item['id']['videoId']
         title = item['snippet']['title']
         thumbnail = item['snippet']['thumbnails']['high']['url']
         video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-        if is_short(video_id):
+        if is_short(video_id,API_KEY):
             continue
 
         try:
@@ -80,23 +80,24 @@ def get_latest_news_transcript_cleaned():
             if not transcript_text.strip():
                 continue
             genre = detect_genre(transcript_text)
-            formatted_result = (
-                f"Title:\n{title}\n\n"
-                f"Genre:\n{genre}\n\n"
-                f"Video Link:\n{video_url}\n\n"
-                f"Transcript:\n{transcript_text.strip()}"
-                )
+            result = {
+                "title":title,
+                "genre":genre,
+                "video_url":video_url,
+                "thumbnail":thumbnail,
+                "transcript":transcript_text.strip()
+            }
+            results.append(result)
 
-            return formatted_result
-
+            if len(results) >= num_videos_to_fetch:
+                break
         except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable):
             continue
         except Exception:
             continue
+    return results
 
-    return "Error: No suitable video with transcript found."
-
-if __name__== "__main__":
-    news_output = get_latest_news_transcript_cleaned()
-    print(news_output)
+# if __name__== "__main__":
+#     news_output = get_latest_news_transcript_cleaned()
+#     print(news_output)
 

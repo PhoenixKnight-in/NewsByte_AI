@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:frontend/auth/widget/saved_news_page.dart';
 import 'package:frontend/auth/widget/user_details_page.dart';
 import 'package:frontend/channels_page.dart';
-//import 'package:frontend/channels_page.dart';
-import 'package:frontend/home/GNewsService.dart';
+import 'package:frontend/home_page.dart';
+import 'package:frontend/youtube_channel/YoutubeNewsService.dart';
 
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+class ChannelHPage extends StatelessWidget {
+  final String channelName;
+  final String channelID;
+  const ChannelHPage({super.key, required this.channelName,required this.channelID});
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +41,16 @@ class HomePage extends StatelessWidget {
                   );
                 },
               ),
-              
+              ListTile(
+                leading: Icon(Icons.home),
+                title: Text("Home"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomePage()),
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -87,22 +98,22 @@ class HomePage extends StatelessWidget {
               },
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             labelColor: Colors.deepPurple,
             unselectedLabelColor: Colors.grey,
             indicatorColor: Colors.deepPurple,
             tabs: [
-              Tab(text: 'For you'),
-              Tab(text: 'Sports'),
-              Tab(text: 'Entertainment'),
+              Tab(text: '$channelName Latest News'),
+              // Tab(text: '$channelName Entertainment'),
+              // Tab(text: '$channelName Politics'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildNewsTab('general'), // "For You" -> General
-            _buildNewsTab('sports'), // Sports
-            _buildNewsTab('entertainment'), // Entertainment
+            _buildNewsTab("$channelName", '$channelID'), // "For You" -> General
+            // _buildNewsTab("$channelName",'$ch'), // Sports
+            // _buildNewsTab("$channelName",'NDTV Politics'), // Entertainment
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -136,9 +147,12 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsTab(String topic) {
+  Widget _buildNewsTab(String channel,String channel_id) {
     return FutureBuilder<List<dynamic>>(
-      future: GNewsService.fetchNews(topic),
+      future: YouTubeNewsService.fetchNews(
+        channel,
+        channelId: channel_id,
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -148,21 +162,21 @@ class HomePage extends StatelessWidget {
           return const Center(child: Text('No news available.'));
         }
 
-        final articles = snapshot.data!;
+        final videos = snapshot.data!;
         return ListView.builder(
-          itemCount: articles.length,
+          itemCount: videos.length,
           itemBuilder: (context, index) {
-            final article = articles[index];
+            final video = videos[index];
             return Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (article['image'] != null)
+                  if (video['thumbnail'] != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.network(
-                        article['image'],
+                        video['thumbnail'],
                         height: 200,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -170,7 +184,7 @@ class HomePage extends StatelessWidget {
                     ),
                   const SizedBox(height: 10),
                   Text(
-                    article['title'] ?? 'No title',
+                    video['title'] ?? 'No title',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
@@ -178,8 +192,20 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    article['description'] ?? '',
-                    style: const TextStyle(fontSize: 14),
+                    video['genre'] ?? 'Unknown',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    onPressed: () {
+                      // Open video in browser
+                      final url = video['video_url'];
+                      // You can use url_launcher here to open the link
+                    },
+                    child: const Text("Watch on YouTube"),
                   ),
                   const Divider(height: 30, thickness: 1),
                 ],

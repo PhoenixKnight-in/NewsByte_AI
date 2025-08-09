@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/youtube_channel/channel_home.dart';
 import 'auth/widget/channel_details_page.dart';
 //import 'channel_details_page.dart';
 
@@ -10,18 +11,13 @@ class ChannelsPage extends StatelessWidget {
     {
       'name': 'NDTV',
       'logo': 'assets/1st.jpg',
-      'headline': "Will Dreamliner's Black Box need to go abroad?",
-      'description': 'An NDTV exclusive report on aviation safety and data tracking.',
-      'videoThumbnail': 'assets/1st.jpg',
-      'videoDuration': '2:03',
+      'channel_id':"UCZFMm1mMw0F81Z37aaEzTUA",
+      
     },
     {
       'name': 'Times Now',
       'logo': 'assets/2nd.png',
-      'headline': 'India vs England Test - Shubman Era Begins',
-      'description': 'Shubman Gill leads a young team in a red-ball challenge.',
-      'videoThumbnail': 'assets/2nd.png',
-      'videoDuration': '11:56',
+      'channel_id':"UC6RJ7-PaXg6TIH2BzZfTV7w",
     },
   ];
 
@@ -49,17 +45,14 @@ class ChannelsPage extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ChannelDetailPage(
-                    name: channel['name']!,
-                    logo: channel['logo']!,
-                    headline: channel['headline']!,
-                    description: channel['description']!,
-                    videoThumbnail: channel['videoThumbnail']!,
-                    videoDuration: channel['videoDuration']!,
+                  builder: (context) => ChannelHPage(
+                    channelName: channel['name']!,
+                    channelID: channel['channel_id']!,
                   ),
                 ),
               );
             },
+
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               decoration: BoxDecoration(

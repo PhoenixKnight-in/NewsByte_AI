@@ -1,3 +1,9 @@
+import os
+from fastapi import Query
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+from Transcripts.final_youtube_retrieval import get_latest_news_transcript_cleaned
+from models.youtubevid import NewsItem
 from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -12,6 +18,7 @@ from models.token_data import TokenData
 from models.user import User, UserInDB
 
 
+load_dotenv()
 # MongoDB Configuration
 
 MONGO_URI = "mongodb+srv://phoenixknight-in:Phoenix18.in@cluster.xopt5jz.mongodb.net/"
@@ -118,7 +125,24 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 async def read_own_items(current_user: User = Depends(get_current_active_user)):
     return [{"item_id": 1, "owner": current_user.username}]
 
-# youtube 
+# youtube retrieval
+ 
+@app.get("/get_latest_news", response_model=list[NewsItem])
+async def get_latest_news(query: str = "Sports latest news", num_videos: int = 3, minutes_ago: int = 1440,channel_id:str |None = None):
+    results = get_latest_news_transcript_cleaned(query, num_videos, minutes_ago,channel_id)
+    if not results:
+        return []
+    # Save to MongoDB
+    db.news.insert_many(results)
+    return results
+
+@app.get("/get_saved_news", response_model=list[NewsItem])
+async def get_saved_news():
+    news = []
+    for item in db.news.find():
+        item.pop('_id', None)
+        news.append(item)
+    return news 
 @app.get("/")
 def root():
     return {"message": "Your FastAPI app with MongoDB Auth is running! "}
