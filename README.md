@@ -23,7 +23,9 @@ Home Page:
 Youtube Video Page
 
 
-![WhatsApp Image 2025-08-10 at 15 04 31_c512d503](https://github.com/user-attachments/assets/e0749f5c-7c75-4d88-9a0c-f771b180f8b1)
+
+![WhatsApp Image 2025-08-10 at 15 04 31_a74487f8](https://github.com/user-attachments/assets/152f0bee-3121-47e6-82a3-ff357d5a683c)
+
 
 
 
