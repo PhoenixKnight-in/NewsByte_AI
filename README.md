@@ -11,8 +11,8 @@ The app uses YouTube Data API, YouTube Transcript API,Gnew.io API for Homepage a
 Team AINEWSUM:
 Parthiban M (Team lead - Worked in integration of frontend,backend,database and deployment)
 Poojikasri (Frontend dev)
-Udiksha Agarwal (YOUTUBE Transcript retrieval)
-Yashvendra(Falcon AI LLM Summarization)
+Udiksha Agarwal (YOUTUBE API- Transcript retrieval)
+Yashvendra(Falcon AI- LLM Summarization)
 Tanay(Database Creation)
 laya (Authentication)
 
@@ -66,7 +66,7 @@ Backend will start at:
 cpp
 Copy
 Edit
-http://127.0.0.1:8000
+http://127.0.0.0:8000
 📱 Frontend Setup (Flutter)
 1️⃣ Navigate to the frontend folder
 bash
@@ -84,7 +84,7 @@ In api_service.dart, set your backend API URL:
 dart
 Copy
 Edit
-const String serverUrl = "http://127.0.0.1:8000";
+const String serverUrl = "http://127.0.0.0.0:8000";
 4️⃣ Run the Flutter app
 bash
 Copy
