@@ -1,4 +1,4 @@
-
+![IMG-20250725-WA0002](https://github.com/user-attachments/assets/878791c0-c042-4aa5-be75-822834ec0f1f)
                                YouTube News Summary App
 
 
@@ -15,6 +15,7 @@ Udiksha Agarwal (YOUTUBE API- Transcript retrieval)
 Yashvendra(Falcon AI- LLM Summarization)
 Tanay(Database Creation)
 laya (Authentication)
+![IMG-20250725-WA0002](https://github.com/user-attachments/assets/af8fa69c-cac9-49af-9516-da3c539e6d6d)
 
 📌 Features
 Fetch latest videos from a YouTube channel.
