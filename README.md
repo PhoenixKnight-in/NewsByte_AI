@@ -1,5 +1,5 @@
 
-                                                               YouTube News Summary App
+                               YouTube News Summary App
 
 
 
