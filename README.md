@@ -1,6 +1,4 @@
-![IMG-20250725-WA0002](https://github.com/user-attachments/assets/878791c0-c042-4aa5-be75-822834ec0f1f)
                                YouTube News Summary App
-
 
 
 A Flutter + FastAPI-based application that fetches the latest YouTube videos from a News channel, retrieves transcripts, generates summaries, and displays them with thumbnails.
@@ -14,8 +12,20 @@ Poojikasri (Frontend dev)
 Udiksha Agarwal (YOUTUBE API- Transcript retrieval)
 Yashvendra(Falcon AI- LLM Summarization)
 Tanay(Database Creation)
-laya (Authentication)
-![IMG-20250725-WA0002](https://github.com/user-attachments/assets/af8fa69c-cac9-49af-9516-da3c539e6d6d)
+Home Page:
+
+
+![IMG-20250725-WA0002](https://github.com/user-attachments/assets/085edd82-c8f3-4a40-9206-2c695a8a53c5)
+
+
+
+
+Youtube Video Page
+
+
+![WhatsApp Image 2025-08-10 at 15 04 31_c512d503](https://github.com/user-attachments/assets/e0749f5c-7c75-4d88-9a0c-f771b180f8b1)
+
+
 
 📌 Features
 Fetch latest videos from a YouTube channel.
