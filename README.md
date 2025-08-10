@@ -1,4 +1,8 @@
-YouTube News Summary App
+
+                                                                  YouTube News Summary App
+
+
+
 A Flutter + FastAPI-based application that fetches the latest YouTube videos from a News channel, retrieves transcripts, generates summaries, and displays them with thumbnails.
 The app uses YouTube Data API, YouTube Transcript API,Gnew.io API for Homepage articles and an AI summarization backend.
 
