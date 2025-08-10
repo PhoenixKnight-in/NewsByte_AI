@@ -5,6 +5,9 @@
 
 A Flutter + FastAPI-based application that fetches the latest YouTube videos from a News channel, retrieves transcripts, generates summaries, and displays them with thumbnails.
 The app uses YouTube Data API, YouTube Transcript API,Gnew.io API for Homepage articles and an AI summarization backend.
+
+
+
 Team AINEWSUM:
 Parthiban M (Team lead - Worked in integration of frontend,backend,database and deployment)
 Poojikasri (Frontend dev)
