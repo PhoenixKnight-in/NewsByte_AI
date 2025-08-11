@@ -20,7 +20,8 @@ The app uses **YouTube Data API**, **YouTube Transcript API**, **GNews.io API** 
 
 ![WhatsApp Image 2025-08-11 at 18 44 58_dc8c6fd6](https://github.com/user-attachments/assets/fc59a10b-c514-40a1-b23a-a6d280566070)
 
-![WhatsApp Image 2025-08-11 at 18 44 59_86d14a1b](https://github.com/user-attachments/assets/3051f142-c0eb-42fd-8cac-b6bff9bb00f5)
+![WhatsApp Image 2025-08-11 at 19 50 48_d2961fe1](https://github.com/user-attachments/assets/b0e148c6-d96f-483e-bd1d-141c36212271)
+
 
 
 ---
