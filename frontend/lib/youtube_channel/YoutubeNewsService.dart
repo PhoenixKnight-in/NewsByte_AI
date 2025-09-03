@@ -10,7 +10,7 @@ class YouTubeNewsService {
     final query = '$channel';
     final params = {
       'query': query,
-      'num_videos': '20',
+      'num_videos': '10',
       'minutes_ago':'2000',
       if (channelId != null) 'channel_id': channelId,
     };

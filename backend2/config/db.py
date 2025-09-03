@@ -1,8 +1,10 @@
 # config/db.py
 from pymongo import MongoClient
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 #Cloud connection to MongoDB Atlas
-MONGO_URI = "mongodb+srv://phoenixknight-in:Phoenix18.in@cluster.xopt5jz.mongodb.net/"
+MONGO_URI =  os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
 
 # Database name
