@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.31.14:8000'; // Change to your server URL
+  static const String baseUrl = 'http://172.17.179.249:8000'; // Change to your server URL
   static String? _authToken;
 
   // Set auth token after login

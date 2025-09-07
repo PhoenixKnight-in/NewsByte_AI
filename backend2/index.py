@@ -19,9 +19,10 @@ from models.token import Token
 from models.token_data import TokenData
 from models.user import User, UserInDB
 import logging
-
+#from Summarizer.falcon import Falcon_Sum
 # Import the summarization function
 from transformers import pipeline
+
 
 load_dotenv()
 
@@ -149,6 +150,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
         if username is None:
             raise credentials_exception
         token_data = TokenData(username=username)
+
     except JWTError:
         raise credentials_exception
     user = get_user(token_data.username)
@@ -339,11 +341,35 @@ async def read_own_items(current_user: User = Depends(get_current_active_user)):
     return [{"item_id": 1, "owner": current_user.username}]
 
 # NEW SUMMARIZATION ENDPOINTS
+# Add logging middleware to handle errors gracefully
+@app.middleware("http")
+async def safe_logging_middleware(request, call_next):
+    start_time = datetime.now()
+    try:
+        response = await call_next(request)
+        process_time = (datetime.now() - start_time).total_seconds()
+        
+        # Safe logging
+        try:
+            logger.info(f"{request.client.host} - {request.method} {request.url.path} - {response.status_code} - {process_time:.4f}s")
+        except Exception:
+            # If logging fails, continue without logging
+            pass
+            
+        return response
+    except Exception as e:
+        # Safe error logging
+        try:
+            logger.error(f"Request failed: {request.method} {request.url.path} - {str(e)}")
+        except Exception:
+            # If logging fails, print to stderr as fallback
+            print(f"Request failed: {request.method} {request.url.path} - {str(e)}", file=sys.stderr)
+        raise
+
 
 @app.post("/summarize_news/{video_id}")
 async def summarize_news_by_video_id(
-    video_id: str,
-    current_user: User = Depends(get_current_active_user)
+    video_id: str
 ):
     """
     Generate and store summary for a specific video using its video_id
@@ -389,14 +415,14 @@ async def summarize_news_by_video_id(
                 detail=f"Summarization failed: {summary_result.get('error_message', 'Unknown error')}"
             )
         
-        # Store summary back in database
+        # Store summary back in database (without user info since no auth)
         update_result = db.news.update_one(
             {"video_id": video_id},
             {
                 "$set": {
                     "summary": summary_result["summary"],
                     "summary_created_at": datetime.utcnow(),
-                    "summary_created_by": current_user.username,
+                    "summary_created_by": "anonymous",  # Since no user authentication
                     "summary_status": "completed"
                 }
             }
@@ -416,7 +442,7 @@ async def summarize_news_by_video_id(
             "title": news_item.get("title", ""),
             "summary": summary_result["summary"],
             "summary_created_at": datetime.utcnow(),
-            "summary_created_by": current_user.username,
+            "summary_created_by": "anonymous",
             "regenerated": False
         }
         
@@ -425,14 +451,11 @@ async def summarize_news_by_video_id(
     except Exception as e:
         logger.error(f"Error in summarization endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
+    
 @app.post("/regenerate_summary/{video_id}")
-async def regenerate_summary(
-    video_id: str,
-    current_user: User = Depends(get_current_active_user)
-):
+async def regenerate_summary(video_id: str):
     """
-    Regenerate summary for a specific video (overwrites existing summary)
+    Regenerate summary for a specific video (overwrites existing summary) - NO AUTH REQUIRED
     """
     try:
         # Find the news item by video_id
@@ -443,7 +466,7 @@ async def regenerate_summary(
                 status_code=404, 
                 detail=f"No news item found with video_id: {video_id}"
             )
-        
+            
         # Get transcript
         transcript = news_item.get("transcript", "")
         if not transcript or len(transcript.strip()) < 50:
@@ -472,9 +495,9 @@ async def regenerate_summary(
                 "$set": {
                     "summary": summary_result["summary"],
                     "summary_created_at": datetime.utcnow(),
-                    "summary_created_by": current_user.username,
+                    "summary_created_by": "anonymous",
                     "summary_status": "regenerated",
-                    "previous_summary_backup": news_item.get("summary", "")  # Backup old summary
+                    "previous_summary_backup": news_item.get("summary", "")
                 }
             }
         )
@@ -493,7 +516,7 @@ async def regenerate_summary(
             "title": news_item.get("title", ""),
             "new_summary": summary_result["summary"],
             "summary_created_at": datetime.utcnow(),
-            "summary_created_by": current_user.username,
+            "summary_created_by": "anonymous",
             "regenerated": True
         }
         
@@ -503,62 +526,14 @@ async def regenerate_summary(
         logger.error(f"Error in regenerate summary endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.get("/get_summary/{video_id}")
-async def get_summary_by_video_id(video_id: str):
-    """
-    Get existing summary for a specific video
-    """
-    try:
-        news_item = db.news.find_one(
-            {"video_id": video_id},
-            {
-                "title": 1, 
-                "summary": 1, 
-                "summary_created_at": 1, 
-                "summary_created_by": 1,
-                "summary_status": 1
-            }
-        )
-        
-        if not news_item:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"No news item found with video_id: {video_id}"
-            )
-        
-        if not news_item.get("summary"):
-            return {
-                "video_id": video_id,
-                "title": news_item.get("title", ""),
-                "has_summary": False,
-                "message": "No summary available. Use /summarize_news/{video_id} to generate one."
-            }
-        
-        return {
-            "video_id": video_id,
-            "title": news_item.get("title", ""),
-            "summary": news_item["summary"],
-            "summary_created_at": news_item.get("summary_created_at"),
-            "summary_created_by": news_item.get("summary_created_by"),
-            "summary_status": news_item.get("summary_status", "unknown"),
-            "has_summary": True
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting summary: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
 @app.post("/batch_summarize")
 async def batch_summarize_news(
     channel_id: str = Query(None, description="Summarize all news from specific channel"),
     limit: int = Query(10, description="Maximum number of items to summarize"),
-    skip_existing: bool = Query(True, description="Skip items that already have summaries"),
-    current_user: User = Depends(get_current_active_user)
+    skip_existing: bool = Query(True, description="Skip items that already have summaries")
 ):
     """
-    Batch summarize multiple news items
+    Batch summarize multiple news items - NO AUTH REQUIRED
     """
     try:
         # Build filter query
@@ -618,7 +593,7 @@ async def batch_summarize_news(
                         "$set": {
                             "summary": summary_result["summary"],
                             "summary_created_at": datetime.utcnow(),
-                            "summary_created_by": current_user.username,
+                            "summary_created_by": "anonymous",
                             "summary_status": "batch_generated"
                         }
                     }
@@ -639,7 +614,7 @@ async def batch_summarize_news(
             "processed": len(items),
             "successful": successful,
             "failed": failed,
-            "failed_items": failed_items[:5] if failed_items else [],  # Show first 5 failures
+            "failed_items": failed_items[:5] if failed_items else [],
             "filter_applied": filter_query
         }
         
@@ -995,6 +970,7 @@ async def clear_summaries(
     except Exception as e:
         logger.error(f"Error clearing summaries: {e}")
         raise HTTPException(status_code=500, detail=f"Error clearing summaries: {e}")
+
 
 # Health check endpoint (enhanced with summarization model status)
 @app.get("/health")

@@ -55,3 +55,52 @@ def Falcon_Sum(news_text=None):
 #     result = test_small_model()
 #     print(json.dumps(result, indent=2, ensure_ascii=False))  # You can remove this too if it's being imported elsewhere
     
+
+# def Falcon_Sum(news_text=None):
+#     """
+#     Run a small summarization model and return results as a dictionary (JSON-like).
+#     """
+#     try:
+#         if not summarizer:
+#             return {
+#                 "status": "error",
+#                 "error_message": "Summarization model not available",
+#                 "timestamp": datetime.utcnow().isoformat()
+#             }
+
+#         # Default test input if none provided
+#         if not news_text or len(news_text.strip()) < 50:
+#             return {
+#                 "status": "error",
+#                 "error_message": "No text provided or text too short for summarization",
+#                 "timestamp": datetime.utcnow().isoformat()
+#             }
+
+#         # Limit text length to avoid model issues (BART has token limits)
+#         max_input_length = 1024
+#         if len(news_text) > max_input_length:
+#             news_text = news_text[:max_input_length] + "..."
+
+#         summary_result = summarizer(
+#             news_text, 
+#             max_length=100, 
+#             min_length=30, 
+#             do_sample=False
+#         )
+
+#         summary = summary_result[0]['summary_text']
+
+#         return {
+#             "status": "success",
+#             "original_text": news_text.strip(),
+#             "summary": summary,
+#             "timestamp": datetime.utcnow().isoformat(),
+#         }
+
+#     except Exception as e:
+#         logger.error(f"Summarization error: {e}")
+#         return {
+#             "status": "error",
+#             "error_message": str(e),
+#             "timestamp": datetime.utcnow().isoformat()
+#         }
