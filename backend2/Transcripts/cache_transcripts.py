@@ -47,7 +47,7 @@ class NewsTranscriptCacher:
         elif any(word in text for word in ['attack', 'murder', 'crime', 'terror', 'raid']):
             return 'crime'
         else:
-            return 'default'
+            return 'general'
     
     def is_short(self, video_id, API_KEY):
         video_url = (

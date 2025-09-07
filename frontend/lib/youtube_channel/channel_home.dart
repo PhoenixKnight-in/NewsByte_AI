@@ -3,12 +3,15 @@ import 'package:frontend/auth/widget/saved_news_page.dart';
 import 'package:frontend/auth/widget/user_details_page.dart';
 import 'package:frontend/channels_page.dart';
 import 'package:frontend/home_page.dart';
+import 'package:frontend/video_summary/video_summary_page.dart';
 import 'package:frontend/youtube_channel/YoutubeNewsService.dart';
+
+import 'package:frontend/video_summary/news_item.dart'; // Add this import
 
 class ChannelHPage extends StatelessWidget {
   final String channelName;
   final String channelID;
-  const ChannelHPage({super.key, required this.channelName,required this.channelID});
+  const ChannelHPage({super.key, required this.channelName, required this.channelID});
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +148,7 @@ class ChannelHPage extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsTab(String channel,String channel_id) {
+  Widget _buildNewsTab(String channel, String channel_id) {
     return FutureBuilder<List<dynamic>>(
       future: YouTubeNewsService.fetchNews(
         channel,
@@ -199,11 +202,10 @@ class ChannelHPage extends StatelessWidget {
                   const SizedBox(height: 6),
                   TextButton(
                     onPressed: () {
-                      // Open video in browser
-                      final url = video['video_url'];
-                      // You can use url_launcher here to open the link
+                      // Navigate to Enhanced Video Summary Page
+                      _navigateToSummaryPage(context, video, channel);
                     },
-                    child: const Text("Watch on YouTube"),
+                    child: const Text("Generate Summary"),
                   ),
                   const Divider(height: 30, thickness: 1),
                 ],
@@ -213,5 +215,44 @@ class ChannelHPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  void _navigateToSummaryPage(BuildContext context, Map<String, dynamic> video, String channelName) {
+    // Create a NewsItem object from the video data
+    final newsItem = NewsItem(
+      videoId: _extractVideoId(video['video_url'] ?? ''),
+      title: video['title'] ?? 'No title',
+      channelName: channelName,
+      videoUrl: video['video_url'],
+      thumbnailUrl: video['thumbnail'],
+      publishedAt: video['published_at'] != null 
+          ? DateTime.tryParse(video['published_at']) 
+          : null, channelId: channelID,
+    );
+
+    // Navigate to the Enhanced Video Summary Page
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EnhancedVideoSummaryPage(
+          newsItem: newsItem,
+        ),
+      ),
+    );
+  }
+
+  String _extractVideoId(String videoUrl) {
+    // Extract video ID from YouTube URL
+    if (videoUrl.isEmpty) return '';
+    
+    // Handle different YouTube URL formats
+    RegExp regExp = RegExp(
+      r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+      caseSensitive: false,
+      multiLine: false,
+    );
+    
+    Match? match = regExp.firstMatch(videoUrl);
+    return match?.group(1) ?? '';
   }
 }

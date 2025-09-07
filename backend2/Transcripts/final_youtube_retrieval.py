@@ -16,7 +16,7 @@ def initialize_cacher():
     mongo_uri = os.getenv("MONGO_URI")
     if not mongo_uri:
         # Fallback to default local MongoDB
-        mongo_uri = os.getenv("MONGO_URI")
+        mongo_uri = "mongodb://localhost:27017"
         print("Warning: MONGO_URI not found, using default localhost")
     
     try:
@@ -25,10 +25,10 @@ def initialize_cacher():
             database_name="NewsByte_AI", 
             collection_name="news"
         )
-        print("✅ Cache system initialized successfully")
+        print("Cache system initialized successfully")
         return cacher
     except Exception as e:
-        print(f"❌ Failed to initialize cache: {e}")
+        print(f"Failed to initialize cache: {e}")
         return None
 
 # Global cacher instance
@@ -47,7 +47,7 @@ def get_latest_news_with_caching(
     """
     
     if not cacher:
-        print("❌ Cache system not available, falling back to direct fetch")
+        print("Cache system not available, falling back to direct fetch")
         return get_latest_news_direct(query, num_videos_to_fetch, minutes_ago, channel_id)
     
     try:
@@ -64,7 +64,7 @@ def get_latest_news_with_caching(
         return results
         
     except Exception as e:
-        print(f"❌ Cache system failed: {e}")
+        print(f"Cache system failed: {e}")
         print("Falling back to direct fetch...")
         return get_latest_news_direct(query, num_videos_to_fetch, minutes_ago, channel_id)
 
@@ -83,7 +83,7 @@ def get_latest_news_direct(
     if not API_KEY:
         raise ValueError("Missing YouTube API Key. Check your .env file.")
     
-    print("🔄 Using direct fetch (no caching)")
+    print("Using direct fetch (no caching)")
     
     time_threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
     published_after = time_threshold.isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -128,7 +128,8 @@ def get_latest_news_direct(
             "video_url": video_url,
             "thumbnail": thumbnail,
             "transcript": "Transcript not available (direct mode)",
-            "transcript_language": "none"
+            "transcript_language": "none",
+            "channel_id":channel_id
         }
         results.append(result)
 
@@ -156,11 +157,12 @@ def cleanup_cache(days_old=7):
         print(f"Cache cleanup failed: {e}")
         return 0
 
-def force_refresh_cache(query="NDTV latest news", num_videos=5):
+def force_refresh_cache(query="NDTV latest news", num_videos=5,channel_id="UC6RJ7-PaXg6TIH2BzZfTV7w"):
     """Force refresh cache for testing"""
     return get_latest_news_with_caching(
         query=query,
         num_videos_to_fetch=num_videos,
+        channel_id=channel_id,
         force_refresh=True,
         cache_hours=0  # Ignore all cache
     )
@@ -202,7 +204,7 @@ def test_cache_system():
 #     print("🚀 MAIN EXECUTION")
     
 #     # This is how you should call it:
-#     results = get_latest_news_with_cache(
+#     results = get_latest_news_with_caching(
 #         query='NDTV latest news',
 #         num_videos_to_fetch=10,
 #         cache_hours=6  # Use cache if less than 6 hours old

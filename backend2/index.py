@@ -1,4 +1,6 @@
 import os
+import json
+import sys
 from fastapi import Query
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -17,6 +19,9 @@ from models.token import Token
 from models.token_data import TokenData
 from models.user import User, UserInDB
 import logging
+
+# Import the summarization function
+from transformers import pipeline
 
 load_dotenv()
 
@@ -41,6 +46,72 @@ app = FastAPI()
 # Security & Models
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Initialize summarization model (load once at startup for efficiency)
+try:
+    summarizer = pipeline(
+        "summarization", 
+        model="facebook/bart-large-cnn",
+        device=-1  # Use CPU
+    )
+    logger.info("Summarization model loaded successfully")
+except Exception as e:
+    logger.error(f"Failed to load summarization model: {e}")
+    summarizer = None
+
+# Fix Windows encoding issue
+if sys.platform == "win32":
+    import codecs
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+
+def Falcon_Sum(news_text=None):
+    """
+    Run a small summarization model and return results as a dictionary (JSON-like).
+    """
+    try:
+        if not summarizer:
+            return {
+                "status": "error",
+                "error_message": "Summarization model not available",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+        # Default test input if none provided
+        if not news_text or len(news_text.strip()) < 50:
+            return {
+                "status": "error",
+                "error_message": "No text provided or text too short for summarization",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+        # Limit text length to avoid model issues (BART has token limits)
+        max_input_length = 1024
+        if len(news_text) > max_input_length:
+            news_text = news_text[:max_input_length] + "..."
+
+        summary_result = summarizer(
+            news_text, 
+            max_length=100, 
+            min_length=30, 
+            do_sample=False
+        )
+
+        summary = summary_result[0]['summary_text']
+
+        return {
+            "status": "success",
+            "original_text": news_text.strip(),
+            "summary": summary,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Summarization error: {e}")
+        return {
+            "status": "error",
+            "error_message": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -90,34 +161,147 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-# Helper function to get cached news from MongoDB
-def get_cached_news_from_db(query: str = None, limit: int = 50) -> List[dict]:
-    """Retrieve cached news from MongoDB"""
+# Helper function to get cached news from MongoDB with STRICT channel_id filtering
+def get_cached_news_from_db(channel_id: str = None, query: str = None, limit: int = 50, hours_back: int = 24) -> List[dict]:
+    """Retrieve cached news from MongoDB with STRICT channel_id filtering"""
     try:
-        # Build query filter
         filter_query = {}
-        if query:
-            filter_query["$or"] = [
-                {"title": {"$regex": query, "$options": "i"}},
-                {"description": {"$regex": query, "$options": "i"}}
-            ]
         
-        # Get recent cached news (last 24 hours)
-        cutoff_time = datetime.utcnow() - timedelta(hours=24)
-        filter_query["cached_at"] = {"$gte": cutoff_time}
+        # STRICT Channel ID filtering - this is the key fix
+        if channel_id:
+            # Make sure we're filtering exactly by channel_id
+            filter_query["channel_id"] = {"$eq": channel_id}  # Exact match
+            logger.info(f"STRICT filtering by channel_id: {channel_id}")
         
+        # Time-based filter
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours_back)
+        time_filter = {"cached_at": {"$gte": cutoff_time}}
+        
+        # Secondary text search (only if channel_id filter is applied)
+        if query and channel_id:
+            filter_query = {
+                "$and": [
+                    {"channel_id": {"$eq": channel_id}},
+                    {"cached_at": {"$gte": cutoff_time}},
+                    {
+                        "$or": [
+                            {"title": {"$regex": query, "$options": "i"}},
+                            {"description": {"$regex": query, "$options": "i"}}
+                        ]
+                    }
+                ]
+            }
+        elif query and not channel_id:
+            # If only query provided (no channel_id), search across all channels
+            filter_query = {
+                "$and": [
+                    {"cached_at": {"$gte": cutoff_time}},
+                    {
+                        "$or": [
+                            {"title": {"$regex": query, "$options": "i"}},
+                            {"description": {"$regex": query, "$options": "i"}},
+                            {"channel_name": {"$regex": query, "$options": "i"}}
+                        ]
+                    }
+                ]
+            }
+        elif channel_id and not query:
+            # Channel ID only
+            filter_query = {
+                "$and": [
+                    {"channel_id": {"$eq": channel_id}},
+                    {"cached_at": {"$gte": cutoff_time}}
+                ]
+            }
+        else:
+            # Neither channel_id nor query provided
+            filter_query = time_filter
+        
+        # Execute query
         cursor = db.news.find(filter_query).sort("cached_at", -1).limit(limit)
         results = list(cursor)
         
-        # Remove MongoDB _id field
+        # Debug logging
+        logger.info(f"Filter query used: {filter_query}")
+        logger.info(f"Found {len(results)} items")
+        
+        # Log what channels we actually got
+        channels_found = set()
         for item in results:
+            if 'channel_id' in item:
+                channels_found.add(item['channel_id'])
             item.pop('_id', None)
-            
-        logger.info(f"Retrieved {len(results)} cached news items from DB")
+        
+        logger.info(f"Channels in results: {channels_found}")
+        
         return results
         
     except Exception as e:
         logger.error(f"Error retrieving cached news from DB: {e}")
+        return []
+
+# Helper function to get unique channels from cache
+def get_cached_channels() -> List[dict]:
+    """Get list of unique channels available in cache"""
+    try:
+        # Aggregate unique channels with their info
+        pipeline = [
+            {"$match": {"cached_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}}},
+            {
+                "$group": {
+                    "_id": "$channel_id",
+                    "channel_name": {"$first": "$channel_name"},
+                    "channel_url": {"$first": "$channel_url"},
+                    "video_count": {"$sum": 1},
+                    "latest_video": {"$max": "$cached_at"}
+                }
+            },
+            {"$sort": {"video_count": -1}}
+        ]
+        
+        results = list(db.news.aggregate(pipeline))
+        
+        # Format results
+        channels = []
+        for result in results:
+            channels.append({
+                "channel_id": result["_id"],
+                "channel_name": result["channel_name"],
+                "channel_url": result["channel_url"],
+                "video_count": result["video_count"],
+                "latest_video": result["latest_video"]
+            })
+        
+        logger.info(f"Found {len(channels)} unique channels in cache")
+        return channels
+        
+    except Exception as e:
+        logger.error(f"Error retrieving cached channels: {e}")
+        return []
+
+# Function to clean up mixed channel data (run once)
+def cleanup_mixed_channel_cache():
+    """One-time cleanup function to identify and fix mixed channel data"""
+    try:
+        # Find all items without proper channel_id
+        count_without_channel = db.news.count_documents({"channel_id": {"$exists": False}})
+        logger.info(f"Found {count_without_channel} items without channel_id")
+        
+        # Find all unique channels currently in cache
+        pipeline = [
+            {"$group": {"_id": "$channel_id", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]
+        
+        channel_stats = list(db.news.aggregate(pipeline))
+        logger.info("Current channel distribution in cache:")
+        for stat in channel_stats:
+            logger.info(f"  Channel: {stat['_id']} - Count: {stat['count']}")
+        
+        return channel_stats
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup function: {e}")
         return []
 
 # Auth Routes
@@ -154,16 +338,325 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 async def read_own_items(current_user: User = Depends(get_current_active_user)):
     return [{"item_id": 1, "owner": current_user.username}]
 
-# YouTube retrieval with proper error handling
+# NEW SUMMARIZATION ENDPOINTS
+
+@app.post("/summarize_news/{video_id}")
+async def summarize_news_by_video_id(
+    video_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Generate and store summary for a specific video using its video_id
+    """
+    try:
+        # Find the news item by video_id
+        news_item = db.news.find_one({"video_id": video_id})
+        
+        if not news_item:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No news item found with video_id: {video_id}"
+            )
+        
+        # Check if transcript exists
+        transcript = news_item.get("transcript", "")
+        if not transcript or len(transcript.strip()) < 50:
+            # Try description as fallback
+            transcript = news_item.get("description", "")
+            if not transcript or len(transcript.strip()) < 50:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="No transcript or description available for summarization"
+                )
+        
+        # Check if summary already exists
+        if news_item.get("summary"):
+            return {
+                "message": "Summary already exists",
+                "video_id": video_id,
+                "existing_summary": news_item["summary"],
+                "summary_created_at": news_item.get("summary_created_at"),
+                "regenerated": False
+            }
+        
+        # Generate summary
+        logger.info(f"Generating summary for video_id: {video_id}")
+        summary_result = Falcon_Sum(transcript)
+        
+        if summary_result["status"] != "success":
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Summarization failed: {summary_result.get('error_message', 'Unknown error')}"
+            )
+        
+        # Store summary back in database
+        update_result = db.news.update_one(
+            {"video_id": video_id},
+            {
+                "$set": {
+                    "summary": summary_result["summary"],
+                    "summary_created_at": datetime.utcnow(),
+                    "summary_created_by": current_user.username,
+                    "summary_status": "completed"
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to update news item with summary"
+            )
+        
+        logger.info(f"Summary generated and stored for video_id: {video_id}")
+        
+        return {
+            "message": "Summary generated successfully",
+            "video_id": video_id,
+            "title": news_item.get("title", ""),
+            "summary": summary_result["summary"],
+            "summary_created_at": datetime.utcnow(),
+            "summary_created_by": current_user.username,
+            "regenerated": False
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in summarization endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/regenerate_summary/{video_id}")
+async def regenerate_summary(
+    video_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Regenerate summary for a specific video (overwrites existing summary)
+    """
+    try:
+        # Find the news item by video_id
+        news_item = db.news.find_one({"video_id": video_id})
+        
+        if not news_item:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No news item found with video_id: {video_id}"
+            )
+        
+        # Get transcript
+        transcript = news_item.get("transcript", "")
+        if not transcript or len(transcript.strip()) < 50:
+            # Try description as fallback
+            transcript = news_item.get("description", "")
+            if not transcript or len(transcript.strip()) < 50:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="No transcript or description available for summarization"
+                )
+        
+        # Generate new summary
+        logger.info(f"Regenerating summary for video_id: {video_id}")
+        summary_result = Falcon_Sum(transcript)
+        
+        if summary_result["status"] != "success":
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Summarization failed: {summary_result.get('error_message', 'Unknown error')}"
+            )
+        
+        # Store new summary (overwrite existing)
+        update_result = db.news.update_one(
+            {"video_id": video_id},
+            {
+                "$set": {
+                    "summary": summary_result["summary"],
+                    "summary_created_at": datetime.utcnow(),
+                    "summary_created_by": current_user.username,
+                    "summary_status": "regenerated",
+                    "previous_summary_backup": news_item.get("summary", "")  # Backup old summary
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to update news item with new summary"
+            )
+        
+        logger.info(f"Summary regenerated for video_id: {video_id}")
+        
+        return {
+            "message": "Summary regenerated successfully",
+            "video_id": video_id,
+            "title": news_item.get("title", ""),
+            "new_summary": summary_result["summary"],
+            "summary_created_at": datetime.utcnow(),
+            "summary_created_by": current_user.username,
+            "regenerated": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in regenerate summary endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/get_summary/{video_id}")
+async def get_summary_by_video_id(video_id: str):
+    """
+    Get existing summary for a specific video
+    """
+    try:
+        news_item = db.news.find_one(
+            {"video_id": video_id},
+            {
+                "title": 1, 
+                "summary": 1, 
+                "summary_created_at": 1, 
+                "summary_created_by": 1,
+                "summary_status": 1
+            }
+        )
+        
+        if not news_item:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No news item found with video_id: {video_id}"
+            )
+        
+        if not news_item.get("summary"):
+            return {
+                "video_id": video_id,
+                "title": news_item.get("title", ""),
+                "has_summary": False,
+                "message": "No summary available. Use /summarize_news/{video_id} to generate one."
+            }
+        
+        return {
+            "video_id": video_id,
+            "title": news_item.get("title", ""),
+            "summary": news_item["summary"],
+            "summary_created_at": news_item.get("summary_created_at"),
+            "summary_created_by": news_item.get("summary_created_by"),
+            "summary_status": news_item.get("summary_status", "unknown"),
+            "has_summary": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/batch_summarize")
+async def batch_summarize_news(
+    channel_id: str = Query(None, description="Summarize all news from specific channel"),
+    limit: int = Query(10, description="Maximum number of items to summarize"),
+    skip_existing: bool = Query(True, description="Skip items that already have summaries"),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Batch summarize multiple news items
+    """
+    try:
+        # Build filter query
+        filter_query = {}
+        if channel_id:
+            filter_query["channel_id"] = {"$eq": channel_id}
+        
+        if skip_existing:
+            filter_query["summary"] = {"$exists": False}
+        
+        # Get items to summarize
+        cursor = db.news.find(filter_query).limit(limit)
+        items = list(cursor)
+        
+        if not items:
+            return {
+                "message": "No items found to summarize",
+                "filter_applied": filter_query,
+                "processed": 0,
+                "successful": 0,
+                "failed": 0
+            }
+        
+        successful = 0
+        failed = 0
+        failed_items = []
+        
+        for item in items:
+            try:
+                video_id = item.get("video_id")
+                if not video_id:
+                    failed += 1
+                    failed_items.append({"item": str(item.get("_id", "unknown")), "reason": "No video_id"})
+                    continue
+                
+                # Get transcript
+                transcript = item.get("transcript", "")
+                if not transcript or len(transcript.strip()) < 50:
+                    transcript = item.get("description", "")
+                    if not transcript or len(transcript.strip()) < 50:
+                        failed += 1
+                        failed_items.append({"video_id": video_id, "reason": "No transcript or description"})
+                        continue
+                
+                # Generate summary
+                summary_result = Falcon_Sum(transcript)
+                
+                if summary_result["status"] != "success":
+                    failed += 1
+                    failed_items.append({"video_id": video_id, "reason": summary_result.get("error_message", "Summarization failed")})
+                    continue
+                
+                # Update database
+                update_result = db.news.update_one(
+                    {"video_id": video_id},
+                    {
+                        "$set": {
+                            "summary": summary_result["summary"],
+                            "summary_created_at": datetime.utcnow(),
+                            "summary_created_by": current_user.username,
+                            "summary_status": "batch_generated"
+                        }
+                    }
+                )
+                
+                if update_result.modified_count > 0:
+                    successful += 1
+                else:
+                    failed += 1
+                    failed_items.append({"video_id": video_id, "reason": "Database update failed"})
+                
+            except Exception as e:
+                failed += 1
+                failed_items.append({"video_id": item.get("video_id", "unknown"), "reason": str(e)})
+        
+        return {
+            "message": "Batch summarization completed",
+            "processed": len(items),
+            "successful": successful,
+            "failed": failed,
+            "failed_items": failed_items[:5] if failed_items else [],  # Show first 5 failures
+            "filter_applied": filter_query
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch summarization: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch summarization failed: {str(e)}")
+
+# YouTube retrieval with proper error handling and channel_id focus
 @app.get("/get_latest_news", response_model=List[NewsItem])
 async def get_latest_news(
+    channel_id: str | None = None,
     query: str = "Sports latest news", 
     num_videos: int = 3, 
-    minutes_ago: int = 1440,
-    channel_id: str | None = None
+    minutes_ago: int = 1440
 ):
     try:
-        logger.info(f"Attempting to fetch latest news: query='{query}', num_videos={num_videos}")
+        logger.info(f"Attempting to fetch latest news: channel_id='{channel_id}', query='{query}', num_videos={num_videos}")
         
         # Try to get fresh news first
         results = get_latest_news_with_caching(
@@ -193,16 +686,16 @@ async def get_latest_news(
             
             return results
         else:
-            # If no fresh results, fall back to cached data
+            # If no fresh results, fall back to cached data with channel_id priority
             logger.warning("No fresh results found, falling back to cached data")
             raise Exception("No fresh data available")
             
     except Exception as e:
         logger.error(f"Error fetching fresh news: {e}")
         
-        # Fallback to cached data from MongoDB
+        # Fallback to cached data from MongoDB with channel_id as primary filter
         logger.info("Falling back to cached news from database")
-        cached_results = get_cached_news_from_db(query, num_videos)
+        cached_results = get_cached_news_from_db(channel_id=channel_id, query=query, limit=num_videos)
         
         if cached_results:
             logger.info(f"Successfully retrieved {len(cached_results)} cached items")
@@ -214,52 +707,323 @@ async def get_latest_news(
             return cached_results
         else:
             logger.error("No cached data available either")
-            # Return empty list instead of raising HTTP exception
             return []
 
 @app.get("/get_saved_news", response_model=List[NewsItem])
-async def get_saved_news(limit: int = 50, skip: int = 0):
-    """Get all saved news with pagination"""
+async def get_saved_news(
+    channel_id: str | None = None,
+    limit: int = 50, 
+    skip: int = 0
+):
+    """Get all saved news with pagination, optionally filtered by channel_id"""
     try:
+        filter_query = {}
+        if channel_id:
+            filter_query["channel_id"] = {"$eq": channel_id}  # Strict filtering
+        
         news = []
-        cursor = db.news.find().sort("cached_at", -1).skip(skip).limit(limit)
+        cursor = db.news.find(filter_query).sort("cached_at", -1).skip(skip).limit(limit)
         
         for item in cursor:
             item.pop('_id', None)
             news.append(item)
             
-        logger.info(f"Retrieved {len(news)} saved news items")
+        logger.info(f"Retrieved {len(news)} saved news items (channel_id: {channel_id})")
         return news
         
     except Exception as e:
         logger.error(f"Error retrieving saved news: {e}")
         return []
 
-# New endpoint specifically for cached news
+# Main endpoint for cached news with STRICT channel_id filtering
 @app.get("/get_cached_news", response_model=List[NewsItem])
 async def get_cached_news_endpoint(
-    query: str | None = None,
-    limit: int = 50
+    channel_id: str | None = Query(None, description="REQUIRED: YouTube Channel ID for specific channel"),
+    query: str | None = Query(None, description="Optional: Search text within the channel"),
+    limit: int = Query(50, description="Maximum number of results"),
+    hours_back: int = Query(24, description="Hours back to search in cache")
 ):
-    """Get cached news from database"""
+    """Get cached news - MUST specify channel_id to avoid mixed results"""
     try:
-        cached_results = get_cached_news_from_db(query, limit)
-        return cached_results
+        if not channel_id:
+            # Return empty or error if no channel_id specified
+            logger.warning("No channel_id provided - returning empty results to avoid mixed content")
+            return []
+        
+        cached_results = get_cached_news_from_db(
+            channel_id=channel_id, 
+            query=query, 
+            limit=limit, 
+            hours_back=hours_back
+        )
+        
+        # Additional validation - make sure all results are from the requested channel
+        validated_results = []
+        for item in cached_results:
+            if item.get('channel_id') == channel_id:
+                validated_results.append(item)
+            else:
+                logger.warning(f"Filtered out item from wrong channel: {item.get('channel_id')}")
+        
+        logger.info(f"Returning {len(validated_results)} validated items for channel {channel_id}")
+        return validated_results
+        
     except Exception as e:
         logger.error(f"Error in cached news endpoint: {e}")
         return []
 
-# Health check endpoint
+# New endpoint to get available channels in cache
+@app.get("/get_cached_channels")
+async def get_cached_channels_endpoint():
+    """Get list of channels available in cache"""
+    try:
+        channels = get_cached_channels()
+        return {
+            "channels": channels,
+            "total_channels": len(channels),
+            "timestamp": datetime.utcnow()
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving cached channels: {e}")
+        return {"channels": [], "total_channels": 0, "error": str(e)}
+
+# New endpoint to get news by specific channel with detailed stats
+@app.get("/get_news_by_channel/{channel_id}", response_model=List[NewsItem])
+async def get_news_by_channel(
+    channel_id: str,
+    limit: int = Query(50, description="Maximum number of results"),
+    hours_back: int = Query(24, description="Hours back to search")
+):
+    """Get all news from a specific channel"""
+    try:
+        results = get_cached_news_from_db(
+            channel_id=channel_id,
+            limit=limit,
+            hours_back=hours_back
+        )
+        
+        if not results:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No cached news found for channel_id: {channel_id}"
+            )
+        
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving news for channel {channel_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# New endpoint to debug cache contents
+@app.get("/debug_cache")
+async def debug_cache_contents():
+    """Debug endpoint to see what's actually in your cache"""
+    try:
+        # Get channel distribution
+        pipeline = [
+            {"$group": {
+                "_id": "$channel_id", 
+                "count": {"$sum": 1},
+                "channel_name": {"$first": "$channel_name"},
+                "sample_titles": {"$push": "$title"},
+                "has_summaries": {"$sum": {"$cond": [{"$ne": ["$summary", None]}, 1, 0]}},
+                "has_transcripts": {"$sum": {"$cond": [{"$ne": ["$transcript", None]}, 1, 0]}}
+            }},
+            {"$sort": {"count": -1}}
+        ]
+        
+        channel_stats = list(db.news.aggregate(pipeline))
+        
+        # Limit sample titles to first 3
+        for stat in channel_stats:
+            if stat["sample_titles"]:
+                stat["sample_titles"] = stat["sample_titles"][:3]
+        
+        # Get summary statistics
+        total_items = db.news.count_documents({})
+        items_with_summaries = db.news.count_documents({"summary": {"$exists": True, "$ne": None}})
+        items_with_transcripts = db.news.count_documents({"transcript": {"$exists": True, "$ne": None}})
+        
+        return {
+            "total_items": total_items,
+            "items_with_summaries": items_with_summaries,
+            "items_with_transcripts": items_with_transcripts,
+            "summary_coverage": f"{(items_with_summaries/total_items*100):.1f}%" if total_items > 0 else "0%",
+            "transcript_coverage": f"{(items_with_transcripts/total_items*100):.1f}%" if total_items > 0 else "0%",
+            "channels": channel_stats,
+            "recent_items": db.news.count_documents({
+                "cached_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}
+            })
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {e}")
+        return {"error": str(e)}
+
+# Add endpoint to get summary statistics
+@app.get("/summary_stats")
+async def get_summary_statistics():
+    """Get statistics about summaries in the database"""
+    try:
+        # Aggregate summary statistics
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$channel_id",
+                    "channel_name": {"$first": "$channel_name"},
+                    "total_items": {"$sum": 1},
+                    "items_with_summaries": {
+                        "$sum": {"$cond": [{"$ne": ["$summary", None]}, 1, 0]}
+                    },
+                    "items_with_transcripts": {
+                        "$sum": {"$cond": [{"$ne": ["$transcript", None]}, 1, 0]}
+                    },
+                    "latest_summary": {"$max": "$summary_created_at"}
+                }
+            },
+            {"$sort": {"total_items": -1}}
+        ]
+        
+        channel_summary_stats = list(db.news.aggregate(pipeline))
+        
+        # Calculate coverage percentages
+        for stat in channel_summary_stats:
+            total = stat["total_items"]
+            stat["summary_coverage"] = f"{(stat['items_with_summaries']/total*100):.1f}%" if total > 0 else "0%"
+            stat["transcript_coverage"] = f"{(stat['items_with_transcripts']/total*100):.1f}%" if total > 0 else "0%"
+        
+        # Overall statistics
+        total_items = db.news.count_documents({})
+        total_summaries = db.news.count_documents({"summary": {"$exists": True, "$ne": None}})
+        total_transcripts = db.news.count_documents({"transcript": {"$exists": True, "$ne": None}})
+        
+        # Recent activity
+        recent_summaries = db.news.count_documents({
+            "summary_created_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}
+        })
+        
+        return {
+            "overall_stats": {
+                "total_items": total_items,
+                "total_summaries": total_summaries,
+                "total_transcripts": total_transcripts,
+                "overall_summary_coverage": f"{(total_summaries/total_items*100):.1f}%" if total_items > 0 else "0%",
+                "overall_transcript_coverage": f"{(total_transcripts/total_items*100):.1f}%" if total_items > 0 else "0%",
+                "recent_summaries_24h": recent_summaries
+            },
+            "by_channel": channel_summary_stats,
+            "timestamp": datetime.utcnow()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting summary statistics: {e}")
+        return {"error": str(e)}
+
+# Add endpoint to clear cache for specific channels
+@app.delete("/clear_cache")
+async def clear_cache(
+    channel_id: str | None = Query(None, description="Clear cache for specific channel, or leave empty for all"),
+    confirm: bool = Query(False, description="Must be True to actually delete")
+):
+    """Clear cached data"""
+    if not confirm:
+        return {
+            "message": "Add ?confirm=true to actually delete data",
+            "warning": "This action cannot be undone"
+        }
+    
+    try:
+        if channel_id:
+            # Clear specific channel
+            result = db.news.delete_many({"channel_id": {"$eq": channel_id}})
+            return {
+                "message": f"Cleared {result.deleted_count} items for channel {channel_id}",
+                "channel_id": channel_id
+            }
+        else:
+            # Clear all cache
+            result = db.news.delete_many({})
+            return {
+                "message": f"Cleared all {result.deleted_count} cached items",
+                "warning": "All cache cleared"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing cache: {e}")
+
+# Add endpoint to clear only summaries (keep news items but remove summaries)
+@app.delete("/clear_summaries")
+async def clear_summaries(
+    channel_id: str | None = Query(None, description="Clear summaries for specific channel, or leave empty for all"),
+    confirm: bool = Query(False, description="Must be True to actually delete summaries")
+):
+    """Clear only summaries from cached data (keeps news items)"""
+    if not confirm:
+        return {
+            "message": "Add ?confirm=true to actually delete summaries",
+            "warning": "This action cannot be undone"
+        }
+    
+    try:
+        filter_query = {}
+        if channel_id:
+            filter_query["channel_id"] = {"$eq": channel_id}
+        
+        # Remove summary fields but keep the news items
+        result = db.news.update_many(
+            filter_query,
+            {
+                "$unset": {
+                    "summary": "",
+                    "summary_created_at": "",
+                    "summary_created_by": "",
+                    "summary_status": "",
+                    "previous_summary_backup": ""
+                }
+            }
+        )
+        
+        return {
+            "message": f"Cleared summaries from {result.modified_count} items",
+            "channel_id": channel_id if channel_id else "all channels",
+            "items_modified": result.modified_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Error clearing summaries: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing summaries: {e}")
+
+# Health check endpoint (enhanced with summarization model status)
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     try:
         # Test database connection
         db.command('ping')
+        
+        # Get cache statistics
+        total_cached = db.news.count_documents({})
+        recent_cached = db.news.count_documents({
+            "cached_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}
+        })
+        
+        # Get summary statistics
+        total_summaries = db.news.count_documents({"summary": {"$exists": True, "$ne": None}})
+        
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow(),
-            "database": "connected"
+            "database": "connected",
+            "summarization_model": "loaded" if summarizer else "failed",
+            "cache_stats": {
+                "total_cached_items": total_cached,
+                "recent_cached_items": recent_cached,
+                "total_summaries": total_summaries,
+                "summary_coverage": f"{(total_summaries/total_cached*100):.1f}%" if total_cached > 0 else "0%"
+            }
         }
     except Exception as e:
         return {
@@ -270,4 +1034,19 @@ async def health_check():
 
 @app.get("/")
 def root():
-    return {"message": "Your FastAPI app with MongoDB Auth is running!"}
+    return {
+        "message": "FastAPI NewsByte AI with Summarization is running!",
+        "features": [
+            "User Authentication",
+            "YouTube News Caching",
+            "AI-Powered Summarization", 
+            "Channel-specific Filtering",
+            "Batch Processing"
+        ],
+        "endpoints": {
+            "auth": ["/signup", "/login", "/users/me"],
+            "news": ["/get_latest_news", "/get_cached_news", "/get_news_by_channel/{channel_id}"],
+            "summarization": ["/summarize_news/{video_id}", "/get_summary/{video_id}", "/batch_summarize"],
+            "admin": ["/debug_cache", "/summary_stats", "/clear_cache", "/clear_summaries"]
+        }
+    }
