@@ -59,26 +59,29 @@ class ApiService {
     }
   }
 
-  // Generate summary for a video
-  static Future<Map<String, dynamic>?> generateSummary(String videoId) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/summarize_news/$videoId'),
-        headers: _headers,
-      );
+  // generate Summary
+static Future<Map<String, dynamic>?> generateSummary(String videoId, {bool forceRegenerate = false}) async {
+  try {
+    final url = forceRegenerate 
+        ? '$baseUrl/regenerate_summary/$videoId'
+        : '$baseUrl/summarize_news/$videoId';
+        
+    final response = await http.post(
+      Uri.parse(url),
+      headers: _headers,
+    );
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['detail'] ?? 'Failed to generate summary');
-      }
-    } catch (e) {
-      print('Error generating summary: $e');
-      throw e;
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      final errorData = json.decode(response.body);
+      throw Exception(errorData['detail'] ?? 'Failed to generate summary');
     }
+  } catch (e) {
+    print('Error generating summary: $e');
+    throw e;
   }
-
+}
   // Get available channels
   static Future<List<Map<String, dynamic>>> getCachedChannels() async {
     try {

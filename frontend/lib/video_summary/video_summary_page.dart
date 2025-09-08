@@ -32,44 +32,35 @@ class _EnhancedVideoSummaryPageState extends State<EnhancedVideoSummaryPage> {
     _loadSummary();
   }
 
-  Future<void> _loadSummary() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+Future<void> _loadSummary() async {
+  setState(() {
+    _isLoading = true;
+    _error = null;
+  });
 
-    try {
-      // First check if summary already exists in the NewsItem
-      if (widget.newsItem.hasSummary) {
-        setState(() {
-          _summary = widget.newsItem.summary;
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // If no summary in NewsItem, fetch from API
-      final summaryData = await ApiService.getSummary(widget.newsItem.videoId);
-      
-      if (summaryData != null && summaryData['has_summary'] == true) {
-        setState(() {
-          _summary = summaryData['summary'];
-          _isLoading = false;
-        });
-      } else {
-        // No summary exists, show option to generate
-        setState(() {
-          _summary = null;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
+  try {
+    // Always fetch from API first (don't rely on stale NewsItem data)
+    final summaryData = await ApiService.getSummary(widget.newsItem.videoId);
+    
+    if (summaryData != null && summaryData['has_summary'] == true) {
       setState(() {
-        _error = 'Failed to load summary: $e';
+        _summary = summaryData['summary'];
+        _isLoading = false;
+      });
+    } else {
+      // No summary exists in database
+      setState(() {
+        _summary = null;
         _isLoading = false;
       });
     }
+  } catch (e) {
+    setState(() {
+      _error = 'Failed to load summary: $e';
+      _isLoading = false;
+    });
   }
+}
 
   Future<void> _generateSummary() async {
     setState(() {

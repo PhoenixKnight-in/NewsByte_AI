@@ -369,7 +369,8 @@ async def safe_logging_middleware(request, call_next):
 
 @app.post("/summarize_news/{video_id}")
 async def summarize_news_by_video_id(
-    video_id: str
+    video_id: str,
+    force_regenerate: bool = Query(False, description="Force regenerate even if summary exists")
 ):
     """
     Generate and store summary for a specific video using its video_id
@@ -384,6 +385,16 @@ async def summarize_news_by_video_id(
                 detail=f"No news item found with video_id: {video_id}"
             )
         
+        # Check if summary already exists (unless force_regenerate is True)
+        existing_summary = news_item.get("summary")
+        if existing_summary and not force_regenerate:
+            return {
+                "message": "Summary already exists",
+                "video_id": video_id,
+                "summary": existing_summary,
+                "summary_created_at": news_item.get("summary_created_at"),
+                "regenerated": False
+            }
         # Check if transcript exists
         transcript = news_item.get("transcript", "")
         if not transcript or len(transcript.strip()) < 50:
@@ -622,6 +633,76 @@ async def batch_summarize_news(
         logger.error(f"Error in batch summarization: {e}")
         raise HTTPException(status_code=500, detail=f"Batch summarization failed: {str(e)}")
 
+
+@app.get("/get_summary/{video_id}")
+async def get_summary_by_video_id(video_id: str):
+    """
+    Get existing summary for a specific video by video_id
+    """
+    try:
+        # Find the news item by video_id
+        news_item = db.news.find_one({"video_id": video_id})
+        
+        if not news_item:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No news item found with video_id: {video_id}"
+            )
+        
+        # Check if summary exists
+        if not news_item.get("summary"):
+            return {
+                "video_id": video_id,
+                "title": news_item.get("title", ""),
+                "has_summary": False,
+                "summary": None,
+                "message": "No summary available for this video"
+            }
+        
+        return {
+            "video_id": video_id,
+            "title": news_item.get("title", ""),
+            "has_summary": True,
+            "summary": news_item["summary"],
+            "summary_created_at": news_item.get("summary_created_at"),
+            "summary_created_by": news_item.get("summary_created_by", "unknown")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving summary for video_id {video_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/get_video_details/{video_id}")
+async def get_video_details(video_id: str):
+    """
+    Get complete video details including summary status
+    """
+    try:
+        news_item = db.news.find_one({"video_id": video_id})
+        
+        if not news_item:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No video found with video_id: {video_id}"
+            )
+        
+        # Remove MongoDB ObjectId
+        news_item.pop('_id', None)
+        
+        # Add summary status
+        news_item["has_summary"] = bool(news_item.get("summary"))
+        news_item["has_transcript"] = bool(news_item.get("transcript"))
+        
+        return news_item
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving video details for {video_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
 # YouTube retrieval with proper error handling and channel_id focus
 @app.get("/get_latest_news", response_model=List[NewsItem])
 async def get_latest_news(
