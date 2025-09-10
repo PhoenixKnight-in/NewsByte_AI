@@ -241,22 +241,6 @@ class EnhancedNewsTranscriptCacher:
             else:
                 print(f"[skip] Transcript mostly music/repetitive: {video_id}")
                 return None, None, None
-                
-        # except NoTranscriptFound:
-        #     try:
-        #         # # Try Hindi
-        #         # transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['hi'])
-        #         # transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
-                
-        #         # if self.content_filter.is_meaningful_transcript(transcript_text):
-        #         #     cleaned_text = self.content_filter.clean_transcript_text(transcript_text)
-        #         #     return transcript_data, 'hi', cleaned_text
-        #         # else:
-        #         #     print(f"[skip] Hindi transcript mostly music/repetitive: {video_id}")
-        #         #     return None, None, None
-                    
-        #     except:
-        #         pass
             
             # Try any available language
             try:

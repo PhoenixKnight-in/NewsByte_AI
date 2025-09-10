@@ -186,37 +186,7 @@ class _EnhancedVideoSummaryPageState extends State<EnhancedVideoSummaryPage> {
     }
     return false;
   }
-
-  // Additional fallback strategies
-  Future<bool> _trySimpleLaunch(String videoUrl) async {
-    try {
-      final uri = Uri.parse(videoUrl);
-      print('Trying simple launch without mode specification...');
-      
-      return await launchUrl(uri);
-    } catch (e) {
-      print('Simple launch failed: $e');
-    }
-    return false;
-  }
-
-  Future<bool> _tryInAppBrowser(String videoUrl) async {
-    try {
-      final uri = Uri.parse(videoUrl);
-      print('Trying in-app browser as last resort...');
-      
-      if (await canLaunchUrl(uri)) {
-        return await launchUrl(
-          uri,
-          mode: LaunchMode.inAppBrowserView,
-        );
-      }
-    } catch (e) {
-      print('In-app browser launch failed: $e');
-    }
-    return false;
-  }
-
+  
   String? _extractVideoId(String url) {
     // Handle various YouTube URL formats
     final patterns = [

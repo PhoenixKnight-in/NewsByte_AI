@@ -8,9 +8,9 @@ class ChannelsPage extends StatelessWidget {
   // Sample channel data
   final List<Map<String, String>> channels = const [
     {
-      'name': 'NDTV',
-      'logo': 'assets/1st.jpg',
-      'channel_id':"UCZFMm1mMw0F81Z37aaEzTUA",
+      'name': 'India Today',
+      'logo': 'assets/3rd.png',
+      'channel_id':"UCYPvAwZP8pZhSMW8qs7cVCw",
       
     },
     {

@@ -47,44 +47,86 @@ app = FastAPI()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Initialize summarization model (load once at startup for efficiency)
+
+# Initialize summarization models (load both at startup)
+summarizers = {}
+model_info = {}
+
 try:
-    #Option 3: For very long transcripts (>1024 tokens), use LED:
-    summarizer = pipeline(
+    # Load DistilBART for shorter transcripts (better quality, faster)
+    logger.info("Loading DistilBART model for short transcripts...")
+    summarizers["distilbart"] = pipeline(
+        "summarization", 
+        model="sshleifer/distilbart-cnn-12-6",
+        device=-1
+    )
+    model_info["distilbart"] = {
+        "name": "DistilBART-CNN",
+        "max_input_length": 1024,
+        "optimal_for": "short_to_medium_transcripts",
+        "quality": "high",
+        "speed": "fast"
+    }
+    logger.info("DistilBART model loaded successfully")
+    
+    # Load LED for longer transcripts (handles longer sequences)
+    logger.info("Loading LED model for long transcripts...")
+    summarizers["led"] = pipeline(
         "summarization",
         model="allenai/led-base-16384",
         device=-1
     )
-    model_name = "LED-base"
-    # Option 4: For Good Summarization
-    # summarizer = pipeline(
-    #     "summarization", 
-    #     model="sshleifer/distilbart-cnn-12-6",
-    #     device=-1
-    # )
-    # model_name = "DistilBART"
-    logger.info("Summarization model loaded successfully")
+    model_info["led"] = {
+        "name": "LED-base-16384",
+        "max_input_length": 16384,
+        "optimal_for": "long_transcripts",
+        "quality": "good",
+        "speed": "moderate"
+    }
+    logger.info("LED model loaded successfully")
+    
+    logger.info("Both summarization models loaded successfully")
 except Exception as e:
-    logger.error(f"Failed to load summarization model: {e}")
-    summarizer = None
+    logger.error(f"Failed to load summarization models: {e}")
+    summarizers = {}
 
 # Fix Windows encoding issue
 if sys.platform == "win32":
     import codecs
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
 
+def select_optimal_model(text_length):
+    """
+    Select the optimal summarization model based on text length
+    
+    Args:
+        text_length (int): Length of the text in characters
+        
+    Returns:
+        tuple: (model_key, model_pipeline, model_name)
+    """
+    # Threshold for model selection (roughly 800 words = 4000 characters)
+    LONG_TEXT_THRESHOLD = 4000
+    
+    if text_length > LONG_TEXT_THRESHOLD:
+        # Use LED for longer transcripts
+        return "led", summarizers.get("led"), model_info["led"]["name"]
+    else:
+        # Use DistilBART for shorter transcripts
+        return "distilbart", summarizers.get("distilbart"), model_info["distilbart"]["name"]
+
 def Phoenix_Sum(news_text=None):
     """
-    Run an improved summarization model optimized for news content.
-    Returns abstractive summaries that capture core content, not just paraphrasing.
+    Run an intelligent summarization system that automatically selects the best model
+    based on transcript length for optimal quality and performance.
     """
     try:
-        if not summarizer:
+        if not summarizers:
             return {
                 "status": "error",
-                "error_message": "Summarization model not available",
+                "error_message": "No summarization models available",
                 "timestamp": datetime.utcnow().isoformat(),
-                "model_used": model_name
+                "model_used": "none"
             }
 
         # Validate input
@@ -93,44 +135,83 @@ def Phoenix_Sum(news_text=None):
                 "status": "error",
                 "error_message": "Text too short for meaningful summarization (minimum 50 characters)",
                 "timestamp": datetime.utcnow().isoformat(),
-                "model_used": model_name
+                "model_used": "none"
             }
 
         # Clean and prepare text
         news_text = news_text.strip()
         original_length = len(news_text)
         
-        # Handle long texts intelligently
-        max_input_length = 1024  # BART/Pegasus token limit
-        if len(news_text) > max_input_length:
-            # Try to find a good breaking point (sentence boundary)
-            truncated_text = news_text[:max_input_length]
-            last_sentence = truncated_text.rfind('.')
-            if last_sentence > 500:  # If we find a reasonable sentence boundary
-                news_text = truncated_text[:last_sentence + 1]
-            else:
-                news_text = truncated_text + "..."
+        # Select optimal model based on text length
+        model_key, selected_model, model_name = select_optimal_model(original_length)
         
-        # Determine optimal summary length based on input length
+        if not selected_model:
+            return {
+                "status": "error",
+                "error_message": f"Selected model ({model_key}) not available",
+                "timestamp": datetime.utcnow().isoformat(),
+                "model_used": model_name
+            }
+        
+        logger.info(f"Selected model: {model_name} for text length: {original_length}")
+        
+        # Get model-specific parameters
+        if model_key == "led":
+            max_input_length = 14000  # Conservative limit for LED (allows for tokenization overhead)
+            # LED can handle longer sequences, so less aggressive truncation
+            if len(news_text) > max_input_length:
+                truncated_text = news_text[:max_input_length]
+                last_sentence = truncated_text.rfind('.')
+                if last_sentence > max_input_length * 0.8:
+                    news_text = truncated_text[:last_sentence + 1]
+                else:
+                    news_text = truncated_text + "..."
+        else:  # DistilBART
+            max_input_length = 1024  # DistilBART token limit
+            if len(news_text) > max_input_length:
+                truncated_text = news_text[:max_input_length]
+                last_sentence = truncated_text.rfind('.')
+                if last_sentence > 500:
+                    news_text = truncated_text[:last_sentence + 1]
+                else:
+                    news_text = truncated_text + "..."
+        
+        # Determine optimal summary length based on input length and model
         if len(news_text) < 200:
             max_length, min_length = 50, 20
         elif len(news_text) < 500:
             max_length, min_length = 80, 30
         elif len(news_text) < 1000:
             max_length, min_length = 120, 40
-        else:
+        elif len(news_text) < 3000:
             max_length, min_length = 150, 50
-
-        # Generate summary with optimized parameters
-        summary_result = summarizer(
-            news_text,
-            max_length=max_length,
-            min_length=min_length,
-            do_sample=False,  # Deterministic output
-            early_stopping=True,
-            no_repeat_ngram_size=3,  # Avoid repetition
-            num_beams=4  # Better quality with beam search
-        )
+        else:
+            # For very long texts (LED territory)
+            max_length, min_length = 200, 60
+        
+        # Model-specific parameters
+        if model_key == "led":
+            # LED-specific parameters for longer sequences
+            summary_result = selected_model(
+                news_text,
+                max_length=max_length,
+                min_length=min_length,
+                do_sample=False,
+                early_stopping=True,
+                no_repeat_ngram_size=3,
+                num_beams=2  # Reduce beams for LED to speed up processing
+            )
+        else:  # DistilBART
+            # DistilBART-specific parameters for better quality on shorter texts
+            summary_result = selected_model(
+                news_text,
+                max_length=max_length,
+                min_length=min_length,
+                do_sample=False,
+                early_stopping=True,
+                no_repeat_ngram_size=3,
+                num_beams=4  # Higher beams for DistilBART for better quality
+            )
 
         summary = summary_result[0]['summary_text']
         
@@ -143,6 +224,8 @@ def Phoenix_Sum(news_text=None):
             "summary": summary,
             "timestamp": datetime.utcnow().isoformat(),
             "model_used": model_name,
+            "model_key": model_key,
+            "model_selection_reason": f"Text length {original_length} chars -> {model_name}",
             "metrics": {
                 "original_length": original_length,
                 "processed_length": len(news_text),
@@ -158,45 +241,76 @@ def Phoenix_Sum(news_text=None):
             "status": "error",
             "error_message": str(e),
             "timestamp": datetime.utcnow().isoformat(),
-            "model_used": model_name
+            "model_used": model_name if 'model_name' in locals() else "unknown"
         }
 
 def batch_summarize(text_list):
     """
-    Efficiently summarize multiple texts in batch
+    Efficiently summarize multiple texts in batch with dynamic model selection
     """
-    if not summarizer:
-        return {"error": "Model not available"}
+    if not summarizers:
+        return {"error": "Models not available"}
     
     try:
         results = []
+        model_usage_stats = {"distilbart": 0, "led": 0}
+        
         for i, text in enumerate(text_list):
             logger.info(f"Processing item {i+1}/{len(text_list)}")
             result = Phoenix_Sum(text)
             results.append(result)
+            
+            # Track model usage
+            if result["status"] == "success":
+                model_key = result.get("model_key", "unknown")
+                if model_key in model_usage_stats:
+                    model_usage_stats[model_key] += 1
         
         return {
             "batch_results": results,
             "total_processed": len(results),
             "successful": len([r for r in results if r["status"] == "success"]),
-            "failed": len([r for r in results if r["status"] == "error"])
+            "failed": len([r for r in results if r["status"] == "error"]),
+            "model_usage_stats": model_usage_stats
         }
         
     except Exception as e:
         return {"error": str(e)}
+    
 
-# Test function to compare models
 def test_summarization_quality():
     """
-    Test function to evaluate summarization quality
+    Test function to evaluate summarization quality with dynamic model selection
     """
-    test_text = """
-    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury and we're going to react to that as we got some new information from Ian Rapaort. First though, send Malik Neighbors the good vibes. If there's any player on this team that they can't afford to get hurt, it's him, Dexter Lawrence, and Andrew Thomas. So, send leak some good vibes. Hit that thumbs up icon right now. Welcome in to New York Giants now by chat sports. I am your host Marshall Green. Let's dive into it. On Tuesday's practice, Malik Neighbors had to leave early due to a shoulder injury. At this moment, we are unsure how severe the injury is, but let's just tell you what we know. Jordan tweeting this out saying Muik Neighbors banged up on a run play on the ground for a few seconds, grabbed at his shoulder as he walked off. Something to monitor. He then followed that up by saying Malik Neighbors went into the fieldhouse with the Giants head trainer Ronnie Barnes. And then Ronnie came out outside and gave head coach Brian Dable an update.
+    # Short text test
+    short_text = """
+    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury.
     """
     
-    result = Phoenix_Sum(test_text)
-    print(json.dumps(result, indent=2, ensure_ascii=False))
-    return result
+    # Long text test
+    long_text = """
+    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury and we're going to react to that as we got some new information from Ian Rapaort. First though, send Malik Neighbors the good vibes. If there's any player on this team that they can't afford to get hurt, it's him, Dexter Lawrence, and Andrew Thomas. So, send leak some good vibes. Hit that thumbs up icon right now. Welcome in to New York Giants now by chat sports. I am your host Marshall Green. Let's dive into it. On Tuesday's practice, Malik Neighbors had to leave early due to a shoulder injury. At this moment, we are unsure how severe the injury is, but let's just tell you what we know. Jordan tweeting this out saying Muik Neighbors banged up on a run play on the ground for a few seconds, grabbed at his shoulder as he walked off. Something to monitor. He then followed that up by saying Malik Neighbors went into the fieldhouse with the Giants head trainer Ronnie Barnes. And then Ronnie came out outside and gave head coach Brian Dable an update. The injury occurred during a routine running play where Neighbors was participating in drills with the offensive unit. Witnesses reported that he appeared to land awkwardly after making a catch and immediately signaled to the sidelines. The training staff quickly responded and escorted him off the field for evaluation. This development is particularly concerning for Giants fans as Neighbors has been one of the standout performers during the early stages of training camp. His chemistry with the quarterback has been evident, and losing him for any extended period would be a significant blow to the team's offensive preparations for the upcoming season.
+    """ * 3  # Make it longer to trigger LED
+    
+    print("Testing short text (should use DistilBART):")
+    result_short = Phoenix_Sum(short_text)
+    print(json.dumps({
+        "model_used": result_short.get("model_used"),
+        "model_selection_reason": result_short.get("model_selection_reason"),
+        "status": result_short.get("status"),
+        "text_length": len(short_text)
+    }, indent=2))
+    
+    print("\nTesting long text (should use LED):")
+    result_long = Phoenix_Sum(long_text)
+    print(json.dumps({
+        "model_used": result_long.get("model_used"),
+        "model_selection_reason": result_long.get("model_selection_reason"), 
+        "status": result_long.get("status"),
+        "text_length": len(long_text)
+    }, indent=2))
+    
+    return {"short_test": result_short, "long_test": result_long}
 
 # Example usage and model comparison
 if __name__ == "__main__":
@@ -809,56 +923,104 @@ async def get_latest_news(
     try:
         logger.info(f"Attempting to fetch latest news: channel_id='{channel_id}', query='{query}', num_videos={num_videos}")
         
+        # FORCE FRESH FETCH when channel_id is provided to avoid cross-channel contamination
+        force_refresh = bool(channel_id)  # Always force refresh for specific channels
+        
         # Try to get fresh news first
         results = get_latest_news_with_caching(
             query=query,
             num_videos_to_fetch=num_videos,
             minutes_ago=minutes_ago,
             channel_id=channel_id,
-            force_refresh=False,
+            force_refresh=force_refresh,  # Use force_refresh based on channel_id
             cache_hours=6
         )
         
         if results and len(results) > 0:
             logger.info(f"Successfully fetched {len(results)} fresh news items")
             
-            # Add timestamp for caching
-            for item in results:
-                if isinstance(item, dict):
-                    item["cached_at"] = datetime.utcnow()
-                    item["source"] = "fresh"
+            # Validate that all results match the requested channel_id
+            if channel_id:
+                validated_results = []
+                for item in results:
+                    if isinstance(item, dict) and item.get('channel_id') == channel_id:
+                        item["cached_at"] = datetime.utcnow()
+                        item["source"] = "fresh"
+                        validated_results.append(item)
+                    else:
+                        logger.warning(f"Filtered out item from wrong channel: got {item.get('channel_id')}, expected {channel_id}")
+                
+                results = validated_results
+            else:
+                # No channel_id specified, accept all results
+                for item in results:
+                    if isinstance(item, dict):
+                        item["cached_at"] = datetime.utcnow()
+                        item["source"] = "fresh"
             
             # Save to MongoDB (handle duplicates)
-            try:
-                db.news.insert_many(results, ordered=False)
-                logger.info(f"Saved {len(results)} items to MongoDB")
-            except Exception as save_error:
-                logger.warning(f"Some items may already exist in DB: {save_error}")
+            if results:
+                try:
+                    db.news.insert_many(results, ordered=False)
+                    logger.info(f"Saved {len(results)} items to MongoDB")
+                except Exception as save_error:
+                    logger.warning(f"Some items may already exist in DB: {save_error}")
             
             return results
         else:
-            # If no fresh results, fall back to cached data with channel_id priority
+            # If no fresh results, fall back to cached data with STRICT channel_id filtering
             logger.warning("No fresh results found, falling back to cached data")
-            raise Exception("No fresh data available")
+            if not channel_id:
+                raise Exception("No fresh data available and no channel_id for cache lookup")
+            
+            # Get cached data with STRICT filtering
+            cached_results = get_cached_news_from_db(
+                channel_id=channel_id, 
+                query=None,  # Don't use query for fallback to get more results
+                limit=num_videos
+            )
+            
+            if cached_results:
+                logger.info(f"Successfully retrieved {len(cached_results)} cached items for channel {channel_id}")
+                
+                # Mark as cached source and validate channel
+                validated_cached = []
+                for item in cached_results:
+                    if item.get('channel_id') == channel_id:
+                        item["source"] = "cached"
+                        validated_cached.append(item)
+                
+                return validated_cached
+            else:
+                logger.error(f"No cached data available for channel {channel_id}")
+                return []
             
     except Exception as e:
-        logger.error(f"Error fetching fresh news: {e}")
+        logger.error(f"Error fetching news: {e}")
         
-        # Fallback to cached data from MongoDB with channel_id as primary filter
-        logger.info("Falling back to cached news from database")
-        cached_results = get_cached_news_from_db(channel_id=channel_id, query=query, limit=num_videos)
-        
-        if cached_results:
-            logger.info(f"Successfully retrieved {len(cached_results)} cached items")
+        # Final fallback to cached data from MongoDB with STRICT channel_id filtering
+        if channel_id:
+            logger.info(f"Final fallback to cached news for channel {channel_id}")
+            cached_results = get_cached_news_from_db(
+                channel_id=channel_id, 
+                query=None, 
+                limit=num_videos
+            )
             
-            # Mark as cached source
-            for item in cached_results:
-                item["source"] = "cached"
+            if cached_results:
+                logger.info(f"Final fallback: retrieved {len(cached_results)} cached items")
                 
-            return cached_results
-        else:
-            logger.error("No cached data available either")
-            return []
+                # Double-check channel validation
+                final_results = []
+                for item in cached_results:
+                    if item.get('channel_id') == channel_id:
+                        item["source"] = "cached_fallback"
+                        final_results.append(item)
+                
+                return final_results
+        
+        logger.error("All fallback attempts failed")
+        return []
 
 @app.get("/get_saved_news", response_model=List[NewsItem])
 async def get_saved_news(
