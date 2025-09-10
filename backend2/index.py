@@ -1021,7 +1021,7 @@ async def get_latest_news(
         
         logger.error("All fallback attempts failed")
         return []
-
+    
 @app.get("/get_saved_news", response_model=List[NewsItem])
 async def get_saved_news(
     channel_id: str | None = None,

@@ -30,26 +30,27 @@ def initialize_cacher():
     except Exception as e:
         print(f"Failed to initialize cache: {e}")
         return None
-
+                    
 # Global cacher instance
 cacher = initialize_cacher()
 
+
 def get_latest_news_with_caching(
-    query: str = 'NDTV latest news',
+    query: str = 'CNN latest news',
     num_videos_to_fetch: int = 10,
     minutes_ago: int = 500,
-    channel_id: str = "UCZFMm1mMw0F81Z37aaEzTUA",
+    channel_id: str = "UCYPvAwZP8pZhSMW8qs7cVCw",
     force_refresh: bool = False,
     cache_hours: int = 6
 ):
     """
     Main function that uses the caching system properly
     """
-    
+
     if not cacher:
         print("Cache system not available, falling back to direct fetch")
         return get_latest_news_direct(query, num_videos_to_fetch, minutes_ago, channel_id)
-    
+        
     try:
         # Use the cacher's method which handles all the caching logic
         results = cacher.get_latest_news_with_caching(
@@ -69,10 +70,10 @@ def get_latest_news_with_caching(
         return get_latest_news_direct(query, num_videos_to_fetch, minutes_ago, channel_id)
 
 def get_latest_news_direct(
-    query: str = 'NDTV latest news',
+    query: str = 'INDIA TODAY latest news',
     num_videos_to_fetch: int = 10,
     minutes_ago: int = 500,
-    channel_id: str = "UCZFMm1mMw0F81Z37aaEzTUA"
+    channel_id: str = "UCYPvAwZP8pZhSMW8qs7cVCw"
 ):
     """
     Fallback function for when cache is not available
@@ -132,7 +133,6 @@ def get_latest_news_direct(
             "channel_id":channel_id,
         }
         results.append(result)
-
     return results
 
 def get_cache_stats():
@@ -195,26 +195,4 @@ def test_cache_system():
     
     return len(results), len(fresh_results)
 
-# if __name__ == "__main__":
-#     # Run tests
-#     test_cache_system()
-    
-#     # Your main usage
-#     print("\n" + "="*50)
-#     print("🚀 MAIN EXECUTION")
-    
-#     # This is how you should call it:
-#     results = get_latest_news_with_caching(
-#         query='NDTV latest news',
-#         num_videos_to_fetch=10,
-#         cache_hours=6  # Use cache if less than 6 hours old
-#     )
-    
-#     print(f"📊 Final results: {len(results)} videos")
-    
-#     # Show cache efficiency if available
-#     if cacher:
-#         stats = get_cache_stats()
-#         if 'total_cached_videos' in stats:
-#             print(f"💾 Total cached: {stats['total_cached_videos']}")
-#             print(f"🆕 Recent (24h): {stats.get('recent_cache_entries', 0)}")
+

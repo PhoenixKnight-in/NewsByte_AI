@@ -14,9 +14,9 @@ class ChannelsPage extends StatelessWidget {
       
     },
     {
-      'name': 'Times Now',
-      'logo': 'assets/2nd.png',
-      'channel_id':"UC6RJ7-PaXg6TIH2BzZfTV7w",
+      'name': 'CNN',
+      'logo': 'assets/cnn.png',
+      'channel_id':"UCupvZG-5ko_eiXAupbDfxWw",
     },
   ];
 
