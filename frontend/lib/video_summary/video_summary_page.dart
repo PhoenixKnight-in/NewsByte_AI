@@ -1,13 +1,9 @@
-
 // File: pages/enhanced_video_summary_page.dart
 import 'package:flutter/material.dart';
 import 'package:frontend/video_summary/api_service.dart';
 import 'package:frontend/video_summary/news_item.dart';
 import 'package:share_plus/share_plus.dart';
-
-
 import 'package:url_launcher/url_launcher.dart';
-
 
 class EnhancedVideoSummaryPage extends StatefulWidget {
   final NewsItem newsItem;
@@ -32,35 +28,35 @@ class _EnhancedVideoSummaryPageState extends State<EnhancedVideoSummaryPage> {
     _loadSummary();
   }
 
-Future<void> _loadSummary() async {
-  setState(() {
-    _isLoading = true;
-    _error = null;
-  });
+  Future<void> _loadSummary() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
-  try {
-    // Always fetch from API first (don't rely on stale NewsItem data)
-    final summaryData = await ApiService.getSummary(widget.newsItem.videoId);
-    
-    if (summaryData != null && summaryData['has_summary'] == true) {
+    try {
+      // Always fetch from API first (don't rely on stale NewsItem data)
+      final summaryData = await ApiService.getSummary(widget.newsItem.videoId);
+      
+      if (summaryData != null && summaryData['has_summary'] == true) {
+        setState(() {
+          _summary = summaryData['summary'];
+          _isLoading = false;
+        });
+      } else {
+        // No summary exists in database
+        setState(() {
+          _summary = null;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
       setState(() {
-        _summary = summaryData['summary'];
-        _isLoading = false;
-      });
-    } else {
-      // No summary exists in database
-      setState(() {
-        _summary = null;
+        _error = 'Failed to load summary: $e';
         _isLoading = false;
       });
     }
-  } catch (e) {
-    setState(() {
-      _error = 'Failed to load summary: $e';
-      _isLoading = false;
-    });
   }
-}
 
   Future<void> _generateSummary() async {
     setState(() {
@@ -99,29 +95,167 @@ Future<void> _loadSummary() async {
     }
   }
 
+  // Enhanced YouTube video launcher with multiple fallback strategies
   Future<void> _openYouTubeVideo() async {
-    final url = widget.newsItem.videoUrl;
-    if (url != null && url.isNotEmpty) {
-      try {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          throw Exception('Could not launch $url');
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open video: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+    final videoUrl = widget.newsItem.videoUrl ?? _constructVideoUrl(widget.newsItem.videoId);
+    
+    if (videoUrl.isEmpty) {
+      _showError('No video URL available');
+      return;
+    }
+
+    try {
+      // Try multiple launch strategies
+      bool success = false;
+
+      // Strategy 1: Try launching with YouTube app first
+      success = await _tryLaunchYouTubeApp(videoUrl);
+      
+      if (!success) {
+        // Strategy 2: Try launching with external browser
+        success = await _tryLaunchBrowser(videoUrl);
       }
+      
+      if (!success) {
+        // Strategy 3: Try launching with any available app
+        success = await _tryLaunchAny(videoUrl);
+      }
+
+      if (!success) {
+        _showError('No app available to open YouTube videos');
+      }
+
+    } catch (e) {
+      _showError('Failed to open video: ${e.toString()}');
     }
   }
 
+  Future<bool> _tryLaunchYouTubeApp(String videoUrl) async {
+    try {
+      // Extract video ID from URL
+      String? videoId = _extractVideoId(videoUrl);
+      if (videoId != null) {
+        // Try YouTube app deep link
+        final youtubeAppUri = Uri.parse('youtube://www.youtube.com/watch?v=$videoId');
+        if (await canLaunchUrl(youtubeAppUri)) {
+          return await launchUrl(youtubeAppUri);
+        }
+      }
+    } catch (e) {
+      print('YouTube app launch failed: $e');
+    }
+    return false;
+  }
+
+  Future<bool> _tryLaunchBrowser(String videoUrl) async {
+    try {
+      final uri = Uri.parse(videoUrl);
+      print('Checking canLaunchUrl for browser: $uri');
+      
+      if (await canLaunchUrl(uri)) {
+        print('canLaunchUrl returned true, launching...');
+        return await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+      } else {
+        print('canLaunchUrl returned false for browser');
+      }
+    } catch (e) {
+      print('Browser launch failed: $e');
+    }
+    return false;
+  }
+
+  Future<bool> _tryLaunchAny(String videoUrl) async {
+    try {
+      final uri = Uri.parse(videoUrl);
+      print('Checking canLaunchUrl for platform default: $uri');
+      
+      if (await canLaunchUrl(uri)) {
+        print('canLaunchUrl returned true, launching with platform default...');
+        return await launchUrl(
+          uri,
+          mode: LaunchMode.platformDefault,
+        );
+      } else {
+        print('canLaunchUrl returned false for platform default');
+      }
+    } catch (e) {
+      print('Platform default launch failed: $e');
+    }
+    return false;
+  }
+
+  // Additional fallback strategies
+  Future<bool> _trySimpleLaunch(String videoUrl) async {
+    try {
+      final uri = Uri.parse(videoUrl);
+      print('Trying simple launch without mode specification...');
+      
+      return await launchUrl(uri);
+    } catch (e) {
+      print('Simple launch failed: $e');
+    }
+    return false;
+  }
+
+  Future<bool> _tryInAppBrowser(String videoUrl) async {
+    try {
+      final uri = Uri.parse(videoUrl);
+      print('Trying in-app browser as last resort...');
+      
+      if (await canLaunchUrl(uri)) {
+        return await launchUrl(
+          uri,
+          mode: LaunchMode.inAppBrowserView,
+        );
+      }
+    } catch (e) {
+      print('In-app browser launch failed: $e');
+    }
+    return false;
+  }
+
+  String? _extractVideoId(String url) {
+    // Handle various YouTube URL formats
+    final patterns = [
+      RegExp(r'youtube\.com/watch\?v=([^&]+)'),
+      RegExp(r'youtu\.be/([^?]+)'),
+      RegExp(r'youtube\.com/embed/([^?]+)'),
+    ];
+    
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(url);
+      if (match != null) {
+        return match.group(1);
+      }
+    }
+    return null;
+  }
+
+  String _constructVideoUrl(String videoId) {
+    if (videoId.isEmpty) return '';
+    return 'https://www.youtube.com/watch?v=$videoId';
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
   void _shareContent() {
-    final contentToShare = '${widget.newsItem.title}\n\n${_summary ?? 'No summary available'}\n\n${widget.newsItem.videoUrl ?? ''}';
+    final videoUrl = widget.newsItem.videoUrl ?? _constructVideoUrl(widget.newsItem.videoId);
+    final contentToShare = '${widget.newsItem.title}\n\n${_summary ?? 'No summary available'}\n\n$videoUrl';
     Share.share(contentToShare);
   }
 

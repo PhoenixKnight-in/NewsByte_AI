@@ -6,7 +6,7 @@ class GNewsService {
   static const String baseUrl = 'https://gnews.io/api/v4/top-headlines';
 
   static Future<List<dynamic>> fetchNews(String topic) async {
-    final url = Uri.parse('$baseUrl?lang=en&max=10&topic=$topic&token=$apiKey');
+    final url = Uri.parse('$baseUrl?lang=en&max=10&topic=$topic&IndianNews&token=$apiKey');
     final response = await http.get(url);
 
     if (response.statusCode == 200) {

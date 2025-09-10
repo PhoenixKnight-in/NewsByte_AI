@@ -6,7 +6,7 @@ import isodate
 import os
 import time
 import random
-from Transcripts.cache_transcripts import NewsTranscriptCacher
+from Transcripts.cache_transcripts import EnhancedNewsTranscriptCacher
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +20,7 @@ def initialize_cacher():
         print("Warning: MONGO_URI not found, using default localhost")
     
     try:
-        cacher = NewsTranscriptCacher(
+        cacher = EnhancedNewsTranscriptCacher(
             mongo_uri=mongo_uri,
             database_name="NewsByte_AI", 
             collection_name="news"
@@ -129,7 +129,7 @@ def get_latest_news_direct(
             "thumbnail": thumbnail,
             "transcript": "Transcript not available (direct mode)",
             "transcript_language": "none",
-            "channel_id":channel_id
+            "channel_id":channel_id,
         }
         results.append(result)
 

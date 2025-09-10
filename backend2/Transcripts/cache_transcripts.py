@@ -1,3 +1,5 @@
+# enhanced_news_filter.py
+import re
 import requests
 from datetime import datetime, timedelta, timezone
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -6,15 +8,131 @@ import isodate
 import os
 import time
 import random
-from dotenv import load_dotenv
 from pymongo import MongoClient
 from urllib.parse import urlparse
 import hashlib
-import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
-class NewsTranscriptCacher:
+class EnhancedNewsFilter:
+    def __init__(self):
+        # Music indicators in transcripts
+        self.music_indicators = [
+            '[Music]', '[music]', '[MUSIC]',
+            '[Applause]', '[applause]', '[APPLAUSE]',
+            '[Laughter]', '[laughter]', '[LAUGHTER]',
+            '[Background Music]', '[background music]',
+            '[Instrumental]', '[instrumental]',
+            '[Sound]', '[sound]', '[SOUND]',
+            '[Beat]', '[beat]', '[BEAT]'
+        ]
+        
+        # Live news indicators in titles
+        self.live_indicators = [
+            'live', 'LIVE', 'Live',
+            'breaking', 'BREAKING', 'Breaking',
+            'streaming', 'STREAMING', 'Streaming',
+            'पत्रकार सम्मेलन', 'प्रेस कॉन्फ्रेंस',  # Hindi for press conference
+            'सीधा प्रसारण',  # Hindi for live broadcast
+        ]
+    
+    def clean_transcript_text(self, transcript_text):
+        """Clean transcript by removing music/sound markers"""
+        if not transcript_text:
+            return ""
+        
+        cleaned_text = transcript_text
+        
+        # Remove music indicators
+        for indicator in self.music_indicators:
+            cleaned_text = cleaned_text.replace(indicator, " ")
+        
+        # Remove repeated words (like "Heat Heat Heat")
+        cleaned_text = re.sub(r'\b(\w+)(\s+\1)+\b', r'\1', cleaned_text, flags=re.IGNORECASE)
+        
+        # Remove extra whitespace
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        
+        return cleaned_text
+    
+    def is_meaningful_transcript(self, transcript_text, min_words=10, min_unique_words=5):
+        """Check if transcript contains meaningful content"""
+        if not transcript_text:
+            return False
+        
+        # Clean the transcript first
+        cleaned_text = self.clean_transcript_text(transcript_text)
+        
+        if not cleaned_text or len(cleaned_text.strip()) < 20:
+            return False
+        
+        # Split into words and filter out short/meaningless words
+        words = [word.strip('.,!?;:') for word in cleaned_text.split() 
+                if len(word.strip('.,!?;:')) > 2]
+        
+        # Check if we have enough words
+        if len(words) < min_words:
+            return False
+        
+        # Check for unique words (avoid repetitive content)
+        unique_words = set(word.lower() for word in words)
+        if len(unique_words) < min_unique_words:
+            return False
+        
+        # Check if it's mostly music/sound effects
+        music_word_count = sum(1 for word in words if any(
+            indicator.lower().replace('[', '').replace(']', '') in word.lower() 
+            for indicator in self.music_indicators
+        ))
+        
+        # If more than 30% of words are music-related, reject
+        if music_word_count / len(words) > 0.3:
+            return False
+        
+        # Check for repetitive patterns (like "Heat Heat Heat")
+        word_counts = {}
+        for word in words:
+            word_lower = word.lower()
+            word_counts[word_lower] = word_counts.get(word_lower, 0) + 1
+        
+        # If any single word appears more than 40% of the time, it's likely repetitive
+        max_word_frequency = max(word_counts.values()) if word_counts else 0
+        if max_word_frequency / len(words) > 0.4:
+            return False
+        
+        return True
+    
+    def is_live_news(self, title, description=""):
+        """Check if video is live news/streaming"""
+        title_lower = title.lower()
+        description_lower = description.lower()
+        
+        # Check for live indicators in title
+        for indicator in self.live_indicators:
+            if indicator.lower() in title_lower:
+                return True
+        
+        # Additional patterns for live content
+        live_patterns = [
+            r'\blive\b',
+            r'\bstreaming\b',
+            r'\bpress conference\b',
+            r'\bpress meet\b',
+            r'\bसीधा\b.*?प्रसारण',
+            r'\bलाइव\b',
+        ]
+        
+        for pattern in live_patterns:
+            if re.search(pattern, title_lower, re.IGNORECASE):
+                return True
+            if description and re.search(pattern, description_lower, re.IGNORECASE):
+                return True
+        
+        return False
+
+
+class EnhancedNewsTranscriptCacher:
     def __init__(self, 
                  mongo_uri=os.getenv("MONGO_URI"), 
                  database_name="NewsByte_AI", 
@@ -25,6 +143,7 @@ class NewsTranscriptCacher:
         self.collection = self.db[collection_name]
         self.request_count = 0
         self.last_request_time = 0
+        self.content_filter = EnhancedNewsFilter()  # Initialize filter
         
         # Create indexes for better performance
         self.collection.create_index("video_url")
@@ -36,7 +155,7 @@ class NewsTranscriptCacher:
     
     def detect_genre(self, text):
         text = text.lower()
-        if any(word in text for word in ['election', 'minister', 'bjp', 'congress', 'parliament']):
+        if any(word in text for word in ['election', 'minister', 'bjp', 'congress', 'parliament','cm','pm']):
             return 'politics'
         elif any(word in text for word in ['match', 'team', 'player', 'tournament']):
             return 'sports'
@@ -100,7 +219,7 @@ class NewsTranscriptCacher:
         return True, cached_doc
     
     def get_transcript_with_fallbacks(self, video_id, delay=2):
-        """Enhanced transcript fetching with rate limiting"""
+        """Enhanced transcript fetching with music/live filtering"""
         current_time = time.time()
         if current_time - self.last_request_time < delay:
             sleep_time = delay - (current_time - self.last_request_time)
@@ -113,15 +232,31 @@ class NewsTranscriptCacher:
         try:
             # Try English first
             transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            return transcript_data, 'en'
+            transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
             
-        except NoTranscriptFound:
-            try:
-                # Try Hindi
-                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['hi'])
-                return transcript_data, 'hi'
-            except:
-                pass
+            # Check if transcript is meaningful
+            if self.content_filter.is_meaningful_transcript(transcript_text):
+                cleaned_text = self.content_filter.clean_transcript_text(transcript_text)
+                return transcript_data, 'en', cleaned_text
+            else:
+                print(f"[skip] Transcript mostly music/repetitive: {video_id}")
+                return None, None, None
+                
+        # except NoTranscriptFound:
+        #     try:
+        #         # # Try Hindi
+        #         # transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['hi'])
+        #         # transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
+                
+        #         # if self.content_filter.is_meaningful_transcript(transcript_text):
+        #         #     cleaned_text = self.content_filter.clean_transcript_text(transcript_text)
+        #         #     return transcript_data, 'hi', cleaned_text
+        #         # else:
+        #         #     print(f"[skip] Hindi transcript mostly music/repetitive: {video_id}")
+        #         #     return None, None, None
+                    
+        #     except:
+        #         pass
             
             # Try any available language
             try:
@@ -129,7 +264,11 @@ class NewsTranscriptCacher:
                 for transcript in transcript_list:
                     try:
                         transcript_data = transcript.fetch()
-                        return transcript_data, transcript.language_code
+                        transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
+                        
+                        if self.content_filter.is_meaningful_transcript(transcript_text):
+                            cleaned_text = self.content_filter.clean_transcript_text(transcript_text)
+                            return transcript_data, transcript.language_code, cleaned_text
                     except:
                         continue
                         
@@ -139,7 +278,11 @@ class NewsTranscriptCacher:
                         if transcript.is_translatable:
                             translated = transcript.translate('en')
                             transcript_data = translated.fetch()
-                            return transcript_data, f'{transcript.language_code}-to-en'
+                            transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
+                            
+                            if self.content_filter.is_meaningful_transcript(transcript_text):
+                                cleaned_text = self.content_filter.clean_transcript_text(transcript_text)
+                                return transcript_data, f'{transcript.language_code}-to-en', cleaned_text
                     except:
                         continue
             except:
@@ -152,7 +295,7 @@ class NewsTranscriptCacher:
             else:
                 print(f"[transcript] error on {video_id}: {e}")
         
-        return None, None
+        return None, None, None
     
     def cache_video_data(self, video_data):
         """Store or update video data in MongoDB"""
@@ -213,9 +356,11 @@ class NewsTranscriptCacher:
                                    minutes_ago: int = 500,
                                    channel_id: str = "UCZFMm1mMw0F81Z37aaEzTUA",
                                    force_refresh: bool = False,
-                                   cache_hours: int = 6):
+                                   cache_hours: int = 6,
+                                   exclude_live: bool = True,
+                                   min_transcript_words: int = 10):
         """
-        Main function that uses caching intelligently
+        Enhanced main function with music and live news filtering
         """
         
         API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -239,7 +384,7 @@ class NewsTranscriptCacher:
             "part": "snippet",
             "q": query,
             "type": "video",
-            "maxResults": 30,  # Fetch more to account for failures and shorts
+            "maxResults": 50,  # Fetch more since we'll filter many out
             "order": "date",
             "safeSearch": "strict",
             "publishedAfter": published_after,
@@ -252,7 +397,6 @@ class NewsTranscriptCacher:
         resp = requests.get(search_url, params=params)
         if resp.status_code != 200:
             print(f"[search] failed: {resp.status_code}")
-            # Return cached data as fallback
             return self.get_cached_news(hours_old=24, limit=num_videos_to_fetch)
 
         data = resp.json()
@@ -260,6 +404,8 @@ class NewsTranscriptCacher:
         new_results = []
         processed_count = 0
         api_calls_made = 0
+        skipped_live = 0
+        skipped_music = 0
 
         for item in items:
             if len(new_results) >= num_videos_to_fetch:
@@ -271,8 +417,10 @@ class NewsTranscriptCacher:
                 continue
 
             processed_count += 1
-            title = item.get("snippet", {}).get("title", "")
-            thumbnail = item.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url", "")
+            snippet = item.get("snippet", {})
+            title = snippet.get("title", "")
+            description = snippet.get("description", "")
+            thumbnail = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
             video_url = f"https://www.youtube.com/watch?v={video_id}"
             
             print(f"Processing {processed_count}: {title[:50]}...")
@@ -285,40 +433,50 @@ class NewsTranscriptCacher:
                 new_results.append(cached_data)
                 continue
 
+            # Filter out live news if requested
+            if exclude_live and self.content_filter.is_live_news(title, description):
+                print(f"[skip] Live news detected: {video_id}")
+                skipped_live += 1
+                continue
+
             # Skip shorts
             if self.is_short(video_id, API_KEY):
                 print(f"[skip] Short video: {video_id}")
                 continue
 
-            # Fetch transcript (this is the expensive operation)
-            transcript_data, language = self.get_transcript_with_fallbacks(video_id)
+            # Fetch transcript with enhanced filtering
+            transcript_data, language, cleaned_transcript = self.get_transcript_with_fallbacks(video_id)
             api_calls_made += 1
             
-            if not transcript_data:
-                print(f"[skip] No transcript: {video_id}")
+            if not transcript_data or not cleaned_transcript:
+                print(f"[skip] No meaningful transcript: {video_id}")
+                skipped_music += 1
                 continue
 
-            transcript_text = " ".join(segment.get("text", "") for segment in transcript_data).strip()
-            if not transcript_text:
+            # Final word count check
+            word_count = len(cleaned_transcript.split())
+            if word_count < min_transcript_words:
+                print(f"[skip] Transcript too short ({word_count} words): {video_id}")
                 continue
 
-            genre = self.detect_genre(transcript_text)
+            genre = self.detect_genre(cleaned_transcript)
             
-            # Create result object
+            # Create result object with cleaned transcript
             result = {
                 "title": title,
                 "genre": genre,
                 "video_url": video_url,
                 "thumbnail": thumbnail,
-                "transcript": transcript_text,
+                "transcript": cleaned_transcript,  # Use cleaned transcript
                 "transcript_language": language,
-                "video_id": video_id
+                "video_id": video_id,
+                "word_count": word_count
             }
             
             # Cache the result
             if self.cache_video_data(result):
                 new_results.append(result)
-                print(f"[success] Cached {video_id} ({language}) - Total: {len(new_results)}")
+                print(f"[success] Cached {video_id} ({language}, {word_count} words) - Total: {len(new_results)}")
             
             # Rate limiting
             time.sleep(random.uniform(2, 4))
@@ -335,11 +493,13 @@ class NewsTranscriptCacher:
                 if cached_item.get("video_url") not in existing_urls:
                     new_results.append(cached_item)
 
-        print(f"\n=== SUMMARY ===")
+        print(f"\n=== ENHANCED FILTERING SUMMARY ===")
         print(f"✅ Total results: {len(new_results)}")
         print(f"🆕 New API calls made: {api_calls_made}")
         print(f"💾 Used cached data: {len(new_results) - api_calls_made}")
-        print(f"🎯 Cache efficiency: {((len(new_results) - api_calls_made) / len(new_results) * 100):.1f}%")
+        print(f"🎵 Skipped music/repetitive: {skipped_music}")
+        print(f"📡 Skipped live news: {skipped_live}")
+        print(f"🎯 Cache efficiency: {((len(new_results) - api_calls_made) / max(len(new_results), 1) * 100):.1f}%")
         
         return new_results[:num_videos_to_fetch]
     
@@ -389,24 +549,79 @@ class NewsTranscriptCacher:
             print(f"Error getting cache stats: {e}")
             return {}
 
-# # Usage Examples
-# if __name__ == "__main__":
-#     # Initialize the cacher
-#     cacher = NewsTranscriptCacher()
+
+# Test function
+def test_enhanced_filter():
+    """Test the enhanced filtering system"""
     
-#     # Get cache statistics
-#     cacher.get_cache_stats()
+    # Test the filter class directly
+    filter_obj = EnhancedNewsFilter()
     
-#     # Get latest news (will use cache when possible)
-#     print("\n=== FETCHING LATEST NEWS ===")
-#     results = cacher.get_latest_news_with_caching(
-#         query='NDTV latest news',
-#         num_videos_to_fetch=10,
-#         minutes_ago=2000,
-#         cache_hours=6  # Use cache if data is less than 6 hours old
-#     )
+    # Test 1: Clean transcript text
+    dirty_transcript = "[Music] Heat Heat Heat [Music] This is actual news content about politics [Applause] More content here [Music]"
+    clean_transcript = filter_obj.clean_transcript_text(dirty_transcript)
+    print(f"Original: {dirty_transcript}")
+    print(f"Cleaned: {clean_transcript}")
+    print()
     
-#     print(f"\nFinal results: {len(results)} videos")
+    # Test 2: Check if transcript is meaningful
+    is_meaningful = filter_obj.is_meaningful_transcript(clean_transcript)
+    print(f"Is meaningful: {is_meaningful}")
+    print()
     
-#     # Clean up old cache (optional)
-#     # cacher.cleanup_old_cache(days_old=7)
+    # Test 3: Test music-only transcript
+    music_only = "[Music] Heat Heat Heat Heat Beat Beat [Music] [Applause]"
+    is_music_meaningful = filter_obj.is_meaningful_transcript(music_only)
+    print(f"Music-only meaningful: {is_music_meaningful}")  # Should be False
+    print()
+    
+    # Test 4: Live news detection
+    live_titles = [
+        "LIVE: Breaking News Conference",
+        "NDTV पत्रकार सम्मेलन LIVE",
+        "Regular news video",
+        "Press conference streaming now"
+    ]
+    
+    for title in live_titles:
+        is_live = filter_obj.is_live_news(title)
+        print(f"'{title}' -> Live: {is_live}")
+
+
+# Usage example
+if __name__ == "__main__":
+    # Test the filter
+    print("🧪 Testing Enhanced Filter...")
+    test_enhanced_filter()
+    
+    print("\n" + "="*50)
+    print("🚀 Using Enhanced Cacher")
+    
+    # Use the enhanced cacher
+    try:
+        enhanced_cacher = EnhancedNewsTranscriptCacher()
+        
+        # Get enhanced news with filtering
+        results = enhanced_cacher.get_latest_news_with_caching(
+            query='NDTV latest news',
+            num_videos_to_fetch=5,
+            exclude_live=True,          # Filter out live content
+            min_transcript_words=15,    # Minimum words required
+            cache_hours=6
+        )
+        
+        print(f"\n📊 Final Results: {len(results)} videos")
+        
+        # Display first result as example
+        if results:
+            first_result = results[0]
+            print(f"\n📰 Sample result:")
+            print(f"Title: {first_result.get('title', '')[:100]}...")
+            print(f"Genre: {first_result.get('genre', 'Unknown')}")
+            print(f"Words: {first_result.get('word_count', 0)}")
+            print(f"Language: {first_result.get('transcript_language', 'Unknown')}")
+            print(f"Transcript preview: {first_result.get('transcript', '')[:200]}...")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        print("Make sure your .env file has MONGO_URI and YOUTUBE_API_KEY")
