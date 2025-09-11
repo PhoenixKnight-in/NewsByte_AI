@@ -1261,7 +1261,6 @@ async def health_check():
             "status": "healthy",
             "timestamp": datetime.utcnow(),
             "database": "connected",
-            "summarization_model": "loaded" if summarizer else "failed",
             "cache_stats": {
                 "total_cached_items": total_cached,
                 "recent_cached_items": recent_cached,
