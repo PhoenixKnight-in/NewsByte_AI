@@ -1,95 +1,111 @@
 #!/bin/bash
 
-# Render Start Script for FastAPI NewsByte AI Application
+# Render Build Script for FastAPI NewsByte AI Application
 set -e  # Exit on any error
 
-echo "Starting FastAPI NewsByte AI Application..."
+echo "🚀 Starting Render build process..."
 
-# Set environment variables for production
-export PYTHONUNBUFFERED=1
-export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+# Update system packages
+echo "📦 Updating system packages..."
+apt-get update
 
-# Set FastAPI/Uvicorn specific settings
-export HOST=${HOST:-"0.0.0.0"}
-export PORT=${PORT:-"10000"}
-export WORKERS=${WORKERS:-"1"}
+# Install system dependencies for transformers and ML libraries
+echo "🔧 Installing system dependencies..."
+apt-get install -y \
+    build-essential \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
+    git \
+    wget \
+    curl
 
-# Log environment info
-echo "Environment Configuration:"
-echo "  Host: $HOST"
-echo "  Port: $PORT"
-echo "  Workers: $WORKERS"
-echo "  Python Path: $PYTHONPATH"
+# Upgrade pip to latest version
+echo "⬆️ Upgrading pip..."
+python -m pip install --upgrade pip
 
-# Verify critical environment variables
-if [ -z "$MONGO_URI" ]; then
-    echo "WARNING: MONGO_URI environment variable not set"
-    echo "Please set it in your Render environment variables"
-fi
+# Install Python dependencies
+echo "📚 Installing Python dependencies..."
+pip install --no-cache-dir -r requirements.txt
 
-# Create logs directory if it doesn't exist
-mkdir -p logs
-
-# Check if main application file exists
-if [ ! -f "main.py" ]; then
-    echo "ERROR: main.py not found in $(pwd)"
-    echo "Contents of current directory:"
-    ls -la
-    exit 1
-fi
-
-# Test imports before starting server
-echo "Testing critical imports..."
+# Download and cache the ML models during build (optional but recommended)
+echo "🤖 Pre-loading summarization models..."
 python -c "
-import sys
-import traceback
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def test_import(module_name):
-    try:
-        __import__(module_name)
-        print(f'✅ {module_name}: OK')
-        return True
-    except ImportError as e:
-        print(f'❌ {module_name}: FAILED - {e}')
-        return False
-    except Exception as e:
-        print(f'⚠️  {module_name}: ERROR - {e}')
-        return False
-
-critical_modules = [
-    'fastapi',
-    'uvicorn',
-    'motor.motor_asyncio',
-    'pymongo',
-    'transformers',
-    'torch',
-    'jose',
-    'passlib',
-    'python_dotenv'
-]
-
-failed = []
-for module in critical_modules:
-    if not test_import(module):
-        failed.append(module)
-
-if failed:
-    print(f'❌ Failed to import: {failed}')
-    sys.exit(1)
-else:
-    print('✅ All critical modules imported successfully')
+try:
+    from transformers import pipeline
+    
+    # Load DistilBART model
+    logger.info('Downloading DistilBART model...')
+    pipeline('summarization', model='sshleifer/distilbart-cnn-12-6', device=-1)
+    logger.info('DistilBART model cached successfully')
+    
+    # Load LED model
+    logger.info('Downloading LED model...')
+    pipeline('summarization', model='allenai/led-base-16384', device=-1)
+    logger.info('LED model cached successfully')
+    
+    logger.info('All models downloaded and cached during build')
+    
+except Exception as e:
+    logger.warning(f'Model pre-loading failed (will load at runtime): {e}')
+    # Don't fail the build if model download fails
+    pass
 "
 
-# Start the FastAPI application with Uvicorn
-echo "Starting Uvicorn server..."
-echo "Command: uvicorn main:app --host $HOST --port $PORT --workers $WORKERS"
+# Create necessary directories
+echo "📁 Creating application directories..."
+mkdir -p logs
+mkdir -p cache
 
-# Use exec to replace the shell process with uvicorn
-exec uvicorn main:app \
-    --host "$HOST" \
-    --port "$PORT" \
-    --workers "$WORKERS" \
-    --timeout-keep-alive 30 \
-    --access-log \
-    --log-level info \
-    --loop uvloop
+# Set appropriate permissions
+echo "🔐 Setting permissions..."
+chmod +x render-start.sh
+
+# Verify installation
+echo "✅ Verifying installation..."
+python -c "
+import sys
+print(f'Python version: {sys.version}')
+
+# Check critical imports
+try:
+    import fastapi
+    print(f'FastAPI: {fastapi.__version__}')
+except ImportError as e:
+    print(f'FastAPI import error: {e}')
+    sys.exit(1)
+
+try:
+    import transformers
+    print(f'Transformers: {transformers.__version__}')
+except ImportError as e:
+    print(f'Transformers import error: {e}')
+    sys.exit(1)
+
+try:
+    import pymongo
+    print('PyMongo: Available')
+except ImportError as e:
+    print(f'PyMongo import error: {e}')
+    sys.exit(1)
+
+try:
+    import motor
+    print('Motor: Available')
+except ImportError as e:
+    print(f'Motor import error: {e}')
+    sys.exit(1)
+
+print('✅ All critical dependencies verified')
+"
+
+echo "🎉 Build completed successfully!"
+echo "📊 Build summary:"
+echo "   - System dependencies installed"
+echo "   - Python packages installed"
+echo "   - ML models pre-cached (if successful)"
+echo "   - Application structure ready"
