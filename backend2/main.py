@@ -1,14 +1,11 @@
 import os
-import json
 import sys
 from fastapi import Query
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from Transcripts.final_youtube_retrieval import get_latest_news_with_caching
 from models.youtubevid import NewsItem
 from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
@@ -19,11 +16,8 @@ from models.token import Token
 from models.token_data import TokenData
 from models.user import User, UserInDB
 import logging
-# Additional memory optimization: Clear model cache after each use
-import gc
-import torch
-# Import the summarization function
-from transformers import pipeline
+from typing import Dict, Any
+import requests
 
 
 load_dotenv()
@@ -51,190 +45,171 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-# Initialize summarization models (load both at startup)
-summarizers = {}
-model_info = {}
 
-# Replace the heavy model loading section with this lightweight version
+# Initialize with external API configuration
+HUGGINGFACE_API_KEY = os.getenv("HUGGING_FACE")  # Add this to Render env vars
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Alternative
 
-# Initialize summarization models (lightweight versions for Render deployment)
-summarizers = {}
-model_info = {}
-
-try:
-    # Use only ONE lightweight model instead of two heavy ones
-    # logger.info("Loading lightweight BART model...")
-    # summarizers["bart_small"] = pipeline(
-    #     "summarization", 
-    #     model="facebook/bart-large-cnn",  # More memory efficient than DistilBART
-    #     device=-1,  # CPU only
-    #     framework="pt"
-    # )
-    # model_info["bart_small"] = {
-    #     "name": "BART-Large-CNN",
-    #     "max_input_length": 1024,
-    #     "optimal_for": "all_transcript_lengths",
-    #     "quality": "high",
-    #     "speed": "moderate",
-    #     "memory_usage": "low"
-    # }
-    # logger.info("Lightweight BART model loaded successfully")
-    
-    # Alternative: Even lighter option if BART still causes issues
-    # Uncomment this and comment out BART if you need even less memory usage
-
-    logger.info("Loading ultra-lightweight T5 model...")
-    summarizers["t5_small"] = pipeline(
-        "summarization",
-        model="t5-small",
-        device=-1,
-        framework="pt"
-    )
-    model_info["t5_small"] = {
-        "name": "T5-Small",
-        "max_input_length": 512,
-        "optimal_for": "all_transcript_lengths", 
-        "quality": "good",
-        "speed": "fast",
-        "memory_usage": "ultra_low"
-    }
-    logger.info("Ultra-lightweight T5 model loaded successfully")
-
-    
-    logger.info("Summarization model loaded successfully")
-except Exception as e:
-    logger.error(f"Failed to load summarization models: {e}")
-    summarizers = {}
-
-def select_optimal_model(text_length):
+# Simple text-based summarization fallback
+def simple_extractive_summary(text: str, max_sentences: int = 3) -> str:
     """
-    Select the optimal summarization model based on text length
-    Now simplified to use single model approach
+    Simple extractive summarization without ML models
     """
-    # Use single model for all text lengths to reduce memory usage
-    if "bart_small" in summarizers:
-        return "bart_small", summarizers.get("bart_small"), model_info["bart_small"]["name"]
-    elif "t5_small" in summarizers:
-        return "t5_small", summarizers.get("t5_small"), model_info["t5_small"]["name"]
+    sentences = text.split('. ')
+    if len(sentences) <= max_sentences:
+        return text
+    
+    # Take first sentence, middle sentence, and last sentence
+    if len(sentences) >= 3:
+        indices = [0, len(sentences)//2, -1]
+        summary_sentences = [sentences[i] for i in indices]
+        return '. '.join(summary_sentences) + '.'
     else:
-        return "none", None, "No model available"
+        return '. '.join(sentences[:max_sentences]) + '.'
 
-def Phoenix_Sum(news_text=None):
+def huggingface_api_summary(text: str, api_key: str) -> Dict[str, Any]:
     """
-    Optimized summarization system for low-memory environments
+    Use Hugging Face Inference API for summarization
     """
     try:
-        if not summarizers:
-            return {
-                "status": "error",
-                "error_message": "No summarization models available",
-                "timestamp": datetime.utcnow().isoformat(),
-                "model_used": "none"
-            }
+        headers = {"Authorization": f"Bearer {api_key}"}
+        API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+        
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={"inputs": text[:1000]},  # Limit input length
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return {
+                    "status": "success",
+                    "summary": result[0].get("summary_text", ""),
+                    "method": "huggingface_api"
+                }
+        
+        return {
+            "status": "error",
+            "error_message": f"API error: {response.status_code}",
+            "method": "huggingface_api"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error_message": str(e),
+            "method": "huggingface_api"
+        }
 
-        # Validate input
+def openai_summary(text: str, api_key: str) -> Dict[str, Any]:
+    """
+    Use OpenAI API for summarization
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "Summarize the following news transcript in 2-3 sentences."},
+                {"role": "user", "content": text[:2000]}
+            ],
+            "max_tokens": 150,
+            "temperature": 0.3
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            summary = result["choices"][0]["message"]["content"]
+            return {
+                "status": "success",
+                "summary": summary,
+                "method": "openai_api"
+            }
+        
+        return {
+            "status": "error",
+            "error_message": f"OpenAI API error: {response.status_code}",
+            "method": "openai_api"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error_message": str(e),
+            "method": "openai_api"
+        }
+
+def Phoenix_Sum(news_text: str = None) -> Dict[str, Any]:
+    """
+    Memory-efficient summarization using external APIs or simple extraction
+    """
+    try:
         if not news_text or len(news_text.strip()) < 50:
             return {
                 "status": "error",
-                "error_message": "Text too short for meaningful summarization (minimum 50 characters)",
-                "timestamp": datetime.utcnow().isoformat(),
-                "model_used": "none"
+                "error_message": "Text too short for meaningful summarization",
+                "timestamp": datetime.utcnow().isoformat()
             }
 
-        # Clean and prepare text
-        news_text = news_text.strip()
         original_length = len(news_text)
-        
-        # Select model (now simplified to single model)
-        model_key, selected_model, model_name = select_optimal_model(original_length)
-        
-        if not selected_model:
-            return {
-                "status": "error",
-                "error_message": f"Selected model ({model_key}) not available",
-                "timestamp": datetime.utcnow().isoformat(),
-                "model_used": model_name
-            }
-        
-        logger.info(f"Using model: {model_name} for text length: {original_length}")
-        
-        # Aggressive text truncation for memory efficiency
-        max_input_length = 800  # Conservative limit for memory management
-        
-        if len(news_text) > max_input_length:
-            # Smart truncation - try to end at sentence boundary
-            truncated_text = news_text[:max_input_length]
-            last_sentence = truncated_text.rfind('.')
-            if last_sentence > max_input_length * 0.7:  # If we can find a good sentence break
-                news_text = truncated_text[:last_sentence + 1]
-            else:
-                # Find last space to avoid cutting words
-                last_space = truncated_text.rfind(' ')
-                if last_space > max_input_length * 0.8:
-                    news_text = truncated_text[:last_space] + "..."
-                else:
-                    news_text = truncated_text + "..."
-        
-        # Determine optimal summary length (more conservative for memory)
-        if len(news_text) < 200:
-            max_length, min_length = 40, 15
-        elif len(news_text) < 400:
-            max_length, min_length = 60, 20
-        elif len(news_text) < 600:
-            max_length, min_length = 80, 25
-        else:
-            max_length, min_length = 100, 30
-        
-        # Memory-efficient summarization parameters
-        try:
-            summary_result = selected_model(
-                news_text,
-                max_length=max_length,
-                min_length=min_length,
-                do_sample=False,
-                early_stopping=True,
-                no_repeat_ngram_size=2,  # Reduced from 3
-                num_beams=2,  # Reduced from 4 for memory efficiency
-                length_penalty=1.0
-            )
-        except Exception as model_error:
-            # Fallback with even more conservative parameters
-            logger.warning(f"First attempt failed, trying with more conservative settings: {model_error}")
-            try:
-                summary_result = selected_model(
-                    news_text[:400],  # Even more aggressive truncation
-                    max_length=min(50, max_length),
-                    min_length=min(15, min_length),
-                    do_sample=False,
-                    early_stopping=True
-                )
-            except Exception as final_error:
-                return {
-                    "status": "error",
-                    "error_message": f"Summarization failed: {str(final_error)}",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "model_used": model_name
-                }
+        news_text = news_text.strip()
 
-        summary = summary_result[0]['summary_text']
-        
-        # Quality metrics
-        compression_ratio = len(summary) / len(news_text)
+        # Try external APIs first
+        if HUGGINGFACE_API_KEY:
+            logger.info("Attempting Hugging Face API summarization")
+            result = huggingface_api_summary(news_text, HUGGINGFACE_API_KEY)
+            if result["status"] == "success":
+                result.update({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metrics": {
+                        "original_length": original_length,
+                        "summary_length": len(result["summary"]),
+                        "compression_ratio": len(result["summary"]) / original_length
+                    }
+                })
+                return result
+
+        if OPENAI_API_KEY:
+            logger.info("Attempting OpenAI API summarization")
+            result = openai_summary(news_text, OPENAI_API_KEY)
+            if result["status"] == "success":
+                result.update({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metrics": {
+                        "original_length": original_length,
+                        "summary_length": len(result["summary"]),
+                        "compression_ratio": len(result["summary"]) / original_length
+                    }
+                })
+                return result
+
+        # Fallback to simple extractive summary
+        logger.info("Using simple extractive summarization as fallback")
+        simple_summary = simple_extractive_summary(news_text)
         
         return {
             "status": "success",
-            "original_text": news_text,
-            "summary": summary,
+            "summary": simple_summary,
+            "method": "extractive_fallback",
             "timestamp": datetime.utcnow().isoformat(),
-            "model_used": model_name,
-            "model_key": model_key,
-            "model_selection_reason": f"Single model approach for memory efficiency",
             "metrics": {
                 "original_length": original_length,
-                "processed_length": len(news_text),
-                "summary_length": len(summary),
-                "compression_ratio": round(compression_ratio, 2),
-                "was_truncated": original_length > max_input_length
+                "summary_length": len(simple_summary),
+                "compression_ratio": len(simple_summary) / original_length
             }
         }
 
@@ -243,81 +218,41 @@ def Phoenix_Sum(news_text=None):
         return {
             "status": "error",
             "error_message": str(e),
-            "timestamp": datetime.utcnow().isoformat(),
-            "model_used": model_name if 'model_name' in locals() else "unknown"
+            "timestamp": datetime.utcnow().isoformat()
         }
 
-def test_summarization_quality():
-    """
-    Test function for the optimized single-model approach
-    """
-    test_text = """
-    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury.
-    The injury occurred during a routine running play where Neighbors was participating in drills with the offensive unit.
-    """
-    
-    print("Testing optimized single-model summarization:")
-    result = test_summarization_quality()
-    print(json.dumps({
-        "model_used": result.get("model_used"),
-        "model_selection_reason": result.get("model_selection_reason"),
-        "status": result.get("status"),
-        "text_length": len(test_text),
-        "memory_optimized": True
-    }, indent=2))
-    
-    return result
+# Remove all the heavy model initialization code
+# No more global model loading, just simple functions
 
-
-def cleanup_model_memory():
-    """Clean up GPU/CPU memory after model inference"""
-    try:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
-    except Exception as e:
-        logger.warning(f"Memory cleanup warning: {e}")
-
-# Update the batch_summarize function to include memory cleanup
 def batch_summarize(text_list):
     """
-    Memory-efficient batch summarization
+    Lightweight batch summarization without memory issues
     """
-    if not summarizers:
-        return {"error": "Models not available"}
-    
     try:
         results = []
-        model_usage_stats = {"processed": 0}
-        
         for i, text in enumerate(text_list):
             logger.info(f"Processing item {i+1}/{len(text_list)}")
             result = Phoenix_Sum(text)
             results.append(result)
-            
-            # Memory cleanup every 5 items
-            if i % 5 == 0:
-                cleanup_model_memory()
-            
-            if result["status"] == "success":
-                model_usage_stats["processed"] += 1
-        
-        # Final cleanup
-        cleanup_model_memory()
-        
+
         return {
             "batch_results": results,
             "total_processed": len(results),
             "successful": len([r for r in results if r["status"] == "success"]),
-            "failed": len([r for r in results if r["status"] == "error"]),
-            "model_usage_stats": model_usage_stats,
-            "memory_optimized": True
+            "failed": len([r for r in results if r["status"] == "error"])
         }
         
     except Exception as e:
-        cleanup_model_memory()
         return {"error": str(e)}
-    
+
+# Remove the test_summarization_quality function or simplify it
+# def test_summarization_quality():
+#     """Simple test without models"""
+#     test_text = "Training camp practice number six for the New York Giants is underway."
+#     result = Phoenix_Sum(test_text)
+#     return result
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
