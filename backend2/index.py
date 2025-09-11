@@ -36,8 +36,8 @@ db = client["NewsByte_AI"]
 users_collection = db["users"]
 
 # JWT Configuration
-SECRET_KEY = "83daa0256a2289b0fb23693bf1f6034d44396675749244721a2b20e896e11662"
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # FastAPI App
