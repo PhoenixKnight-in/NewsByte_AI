@@ -53,39 +53,49 @@ summarizers = {}
 model_info = {}
 
 try:
-    # Load DistilBART for shorter transcripts (better quality, faster)
-    logger.info("Loading DistilBART model for short transcripts...")
-    summarizers["distilbart"] = pipeline(
+    #try loading smaller versions
+    # Only load one lightweight model at startup
+    logger.info("Loading single lightweight model...")
+    summarizer = pipeline(
         "summarization", 
-        model="sshleifer/distilbart-cnn-12-6",
-        device=-1
+        model="sshleifer/distilbart-cnn-6-3",  # Smaller version
+        device=-1,
+        framework="pt"
     )
-    model_info["distilbart"] = {
-        "name": "DistilBART-CNN",
-        "max_input_length": 1024,
-        "optimal_for": "short_to_medium_transcripts",
-        "quality": "high",
-        "speed": "fast"
-    }
-    logger.info("DistilBART model loaded successfully")
+    logger.info("Model loaded successfully")
+    # Load DistilBART for shorter transcripts (better quality, faster)
+    # logger.info("Loading DistilBART model for short transcripts...")
+    # summarizers["distilbart"] = pipeline(
+    #     "summarization", 
+    #     model="sshleifer/distilbart-cnn-12-6",
+    #     device=-1
+    # )
+    # model_info["distilbart"] = {
+    #     "name": "DistilBART-CNN",
+    #     "max_input_length": 1024,
+    #     "optimal_for": "short_to_medium_transcripts",
+    #     "quality": "high",
+    #     "speed": "fast"
+    # }
+    # logger.info("DistilBART model loaded successfully")
     
-    # Load LED for longer transcripts (handles longer sequences)
-    logger.info("Loading LED model for long transcripts...")
-    summarizers["led"] = pipeline(
-        "summarization",
-        model="allenai/led-base-16384",
-        device=-1
-    )
-    model_info["led"] = {
-        "name": "LED-base-16384",
-        "max_input_length": 16384,
-        "optimal_for": "long_transcripts",
-        "quality": "good",
-        "speed": "moderate"
-    }
-    logger.info("LED model loaded successfully")
+    # # Load LED for longer transcripts (handles longer sequences)
+    # logger.info("Loading LED model for long transcripts...")
+    # summarizers["led"] = pipeline(
+    #     "summarization",
+    #     model="allenai/led-base-16384",
+    #     device=-1
+    # )
+    # model_info["led"] = {
+    #     "name": "LED-base-16384",
+    #     "max_input_length": 16384,
+    #     "optimal_for": "long_transcripts",
+    #     "quality": "good",
+    #     "speed": "moderate"
+    # }
+    # logger.info("LED model loaded successfully")
     
-    logger.info("Both summarization models loaded successfully")
+    # logger.info("Both summarization models loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load summarization models: {e}")
     summarizers = {}
