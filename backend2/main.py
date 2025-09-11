@@ -63,26 +63,26 @@ model_info = {}
 
 try:
     # Use only ONE lightweight model instead of two heavy ones
-    logger.info("Loading lightweight BART model...")
-    summarizers["bart_small"] = pipeline(
-        "summarization", 
-        model="facebook/bart-large-cnn",  # More memory efficient than DistilBART
-        device=-1,  # CPU only
-        framework="pt"
-    )
-    model_info["bart_small"] = {
-        "name": "BART-Large-CNN",
-        "max_input_length": 1024,
-        "optimal_for": "all_transcript_lengths",
-        "quality": "high",
-        "speed": "moderate",
-        "memory_usage": "low"
-    }
-    logger.info("Lightweight BART model loaded successfully")
+    # logger.info("Loading lightweight BART model...")
+    # summarizers["bart_small"] = pipeline(
+    #     "summarization", 
+    #     model="facebook/bart-large-cnn",  # More memory efficient than DistilBART
+    #     device=-1,  # CPU only
+    #     framework="pt"
+    # )
+    # model_info["bart_small"] = {
+    #     "name": "BART-Large-CNN",
+    #     "max_input_length": 1024,
+    #     "optimal_for": "all_transcript_lengths",
+    #     "quality": "high",
+    #     "speed": "moderate",
+    #     "memory_usage": "low"
+    # }
+    # logger.info("Lightweight BART model loaded successfully")
     
     # Alternative: Even lighter option if BART still causes issues
     # Uncomment this and comment out BART if you need even less memory usage
-    """
+
     logger.info("Loading ultra-lightweight T5 model...")
     summarizers["t5_small"] = pipeline(
         "summarization",
@@ -99,7 +99,7 @@ try:
         "memory_usage": "ultra_low"
     }
     logger.info("Ultra-lightweight T5 model loaded successfully")
-    """
+
     
     logger.info("Summarization model loaded successfully")
 except Exception as e:
