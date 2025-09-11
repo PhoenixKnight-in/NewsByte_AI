@@ -19,9 +19,6 @@ from models.token import Token
 from models.token_data import TokenData
 from models.user import User, UserInDB
 import logging
-# Additional memory optimization: Clear model cache after each use
-import gc
-import torch
 # Import the summarization function
 from transformers import pipeline
 
@@ -55,73 +52,73 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 summarizers = {}
 model_info = {}
 
-# Replace the heavy model loading section with this lightweight version
-
-# Initialize summarization models (lightweight versions for Render deployment)
-summarizers = {}
-model_info = {}
-
 try:
-    # Use only ONE lightweight model instead of two heavy ones
-    logger.info("Loading lightweight BART model...")
-    summarizers["bart_small"] = pipeline(
+    # Load DistilBART for shorter transcripts (better quality, faster)
+    logger.info("Loading DistilBART model for short transcripts...")
+    summarizers["distilbart"] = pipeline(
         "summarization", 
-        model="facebook/bart-large-cnn",  # More memory efficient than DistilBART
-        device=-1,  # CPU only
-        framework="pt"
+        model="sshleifer/distilbart-cnn-12-6",
+        device=-1
     )
-    model_info["bart_small"] = {
-        "name": "BART-Large-CNN",
+    model_info["distilbart"] = {
+        "name": "DistilBART-CNN",
         "max_input_length": 1024,
-        "optimal_for": "all_transcript_lengths",
+        "optimal_for": "short_to_medium_transcripts",
         "quality": "high",
-        "speed": "moderate",
-        "memory_usage": "low"
+        "speed": "fast"
     }
-    logger.info("Lightweight BART model loaded successfully")
+    logger.info("DistilBART model loaded successfully")
     
-    # Alternative: Even lighter option if BART still causes issues
-    # Uncomment this and comment out BART if you need even less memory usage
-    """
-    logger.info("Loading ultra-lightweight T5 model...")
-    summarizers["t5_small"] = pipeline(
+    # Load LED for longer transcripts (handles longer sequences)
+    logger.info("Loading LED model for long transcripts...")
+    summarizers["led"] = pipeline(
         "summarization",
-        model="t5-small",
-        device=-1,
-        framework="pt"
+        model="allenai/led-base-16384",
+        device=-1
     )
-    model_info["t5_small"] = {
-        "name": "T5-Small",
-        "max_input_length": 512,
-        "optimal_for": "all_transcript_lengths", 
+    model_info["led"] = {
+        "name": "LED-base-16384",
+        "max_input_length": 16384,
+        "optimal_for": "long_transcripts",
         "quality": "good",
-        "speed": "fast",
-        "memory_usage": "ultra_low"
+        "speed": "moderate"
     }
-    logger.info("Ultra-lightweight T5 model loaded successfully")
-    """
+    logger.info("LED model loaded successfully")
     
-    logger.info("Summarization model loaded successfully")
+    logger.info("Both summarization models loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load summarization models: {e}")
     summarizers = {}
 
+# Fix Windows encoding issue
+if sys.platform == "win32":
+    import codecs
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+
 def select_optimal_model(text_length):
     """
     Select the optimal summarization model based on text length
-    Now simplified to use single model approach
+    
+    Args:
+        text_length (int): Length of the text in characters
+        
+    Returns:
+        tuple: (model_key, model_pipeline, model_name)
     """
-    # Use single model for all text lengths to reduce memory usage
-    if "bart_small" in summarizers:
-        return "bart_small", summarizers.get("bart_small"), model_info["bart_small"]["name"]
-    elif "t5_small" in summarizers:
-        return "t5_small", summarizers.get("t5_small"), model_info["t5_small"]["name"]
+    # Threshold for model selection (roughly 800 words = 4000 characters)
+    LONG_TEXT_THRESHOLD = 4000
+    
+    if text_length > LONG_TEXT_THRESHOLD:
+        # Use LED for longer transcripts
+        return "led", summarizers.get("led"), model_info["led"]["name"]
     else:
-        return "none", None, "No model available"
+        # Use DistilBART for shorter transcripts
+        return "distilbart", summarizers.get("distilbart"), model_info["distilbart"]["name"]
 
 def Phoenix_Sum(news_text=None):
     """
-    Optimized summarization system for low-memory environments
+    Run an intelligent summarization system that automatically selects the best model
+    based on transcript length for optimal quality and performance.
     """
     try:
         if not summarizers:
@@ -145,7 +142,7 @@ def Phoenix_Sum(news_text=None):
         news_text = news_text.strip()
         original_length = len(news_text)
         
-        # Select model (now simplified to single model)
+        # Select optimal model based on text length
         model_key, selected_model, model_name = select_optimal_model(original_length)
         
         if not selected_model:
@@ -156,65 +153,65 @@ def Phoenix_Sum(news_text=None):
                 "model_used": model_name
             }
         
-        logger.info(f"Using model: {model_name} for text length: {original_length}")
+        logger.info(f"Selected model: {model_name} for text length: {original_length}")
         
-        # Aggressive text truncation for memory efficiency
-        max_input_length = 800  # Conservative limit for memory management
-        
-        if len(news_text) > max_input_length:
-            # Smart truncation - try to end at sentence boundary
-            truncated_text = news_text[:max_input_length]
-            last_sentence = truncated_text.rfind('.')
-            if last_sentence > max_input_length * 0.7:  # If we can find a good sentence break
-                news_text = truncated_text[:last_sentence + 1]
-            else:
-                # Find last space to avoid cutting words
-                last_space = truncated_text.rfind(' ')
-                if last_space > max_input_length * 0.8:
-                    news_text = truncated_text[:last_space] + "..."
+        # Get model-specific parameters
+        if model_key == "led":
+            max_input_length = 14000  # Conservative limit for LED (allows for tokenization overhead)
+            # LED can handle longer sequences, so less aggressive truncation
+            if len(news_text) > max_input_length:
+                truncated_text = news_text[:max_input_length]
+                last_sentence = truncated_text.rfind('.')
+                if last_sentence > max_input_length * 0.8:
+                    news_text = truncated_text[:last_sentence + 1]
+                else:
+                    news_text = truncated_text + "..."
+        else:  # DistilBART
+            max_input_length = 1024  # DistilBART token limit
+            if len(news_text) > max_input_length:
+                truncated_text = news_text[:max_input_length]
+                last_sentence = truncated_text.rfind('.')
+                if last_sentence > 500:
+                    news_text = truncated_text[:last_sentence + 1]
                 else:
                     news_text = truncated_text + "..."
         
-        # Determine optimal summary length (more conservative for memory)
+        # Determine optimal summary length based on input length and model
         if len(news_text) < 200:
-            max_length, min_length = 40, 15
-        elif len(news_text) < 400:
-            max_length, min_length = 60, 20
-        elif len(news_text) < 600:
-            max_length, min_length = 80, 25
+            max_length, min_length = 50, 20
+        elif len(news_text) < 500:
+            max_length, min_length = 80, 30
+        elif len(news_text) < 1000:
+            max_length, min_length = 120, 40
+        elif len(news_text) < 3000:
+            max_length, min_length = 150, 50
         else:
-            max_length, min_length = 100, 30
+            # For very long texts (LED territory)
+            max_length, min_length = 200, 60
         
-        # Memory-efficient summarization parameters
-        try:
+        # Model-specific parameters
+        if model_key == "led":
+            # LED-specific parameters for longer sequences
             summary_result = selected_model(
                 news_text,
                 max_length=max_length,
                 min_length=min_length,
                 do_sample=False,
                 early_stopping=True,
-                no_repeat_ngram_size=2,  # Reduced from 3
-                num_beams=2,  # Reduced from 4 for memory efficiency
-                length_penalty=1.0
+                no_repeat_ngram_size=3,
+                num_beams=2  # Reduce beams for LED to speed up processing
             )
-        except Exception as model_error:
-            # Fallback with even more conservative parameters
-            logger.warning(f"First attempt failed, trying with more conservative settings: {model_error}")
-            try:
-                summary_result = selected_model(
-                    news_text[:400],  # Even more aggressive truncation
-                    max_length=min(50, max_length),
-                    min_length=min(15, min_length),
-                    do_sample=False,
-                    early_stopping=True
-                )
-            except Exception as final_error:
-                return {
-                    "status": "error",
-                    "error_message": f"Summarization failed: {str(final_error)}",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "model_used": model_name
-                }
+        else:  # DistilBART
+            # DistilBART-specific parameters for better quality on shorter texts
+            summary_result = selected_model(
+                news_text,
+                max_length=max_length,
+                min_length=min_length,
+                do_sample=False,
+                early_stopping=True,
+                no_repeat_ngram_size=3,
+                num_beams=4  # Higher beams for DistilBART for better quality
+            )
 
         summary = summary_result[0]['summary_text']
         
@@ -228,7 +225,7 @@ def Phoenix_Sum(news_text=None):
             "timestamp": datetime.utcnow().isoformat(),
             "model_used": model_name,
             "model_key": model_key,
-            "model_selection_reason": f"Single model approach for memory efficiency",
+            "model_selection_reason": f"Text length {original_length} chars -> {model_name}",
             "metrics": {
                 "original_length": original_length,
                 "processed_length": len(news_text),
@@ -247,77 +244,85 @@ def Phoenix_Sum(news_text=None):
             "model_used": model_name if 'model_name' in locals() else "unknown"
         }
 
-def test_summarization_quality():
-    """
-    Test function for the optimized single-model approach
-    """
-    test_text = """
-    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury.
-    The injury occurred during a routine running play where Neighbors was participating in drills with the offensive unit.
-    """
-    
-    print("Testing optimized single-model summarization:")
-    result = test_summarization_quality()
-    print(json.dumps({
-        "model_used": result.get("model_used"),
-        "model_selection_reason": result.get("model_selection_reason"),
-        "status": result.get("status"),
-        "text_length": len(test_text),
-        "memory_optimized": True
-    }, indent=2))
-    
-    return result
-
-
-def cleanup_model_memory():
-    """Clean up GPU/CPU memory after model inference"""
-    try:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
-    except Exception as e:
-        logger.warning(f"Memory cleanup warning: {e}")
-
-# Update the batch_summarize function to include memory cleanup
 def batch_summarize(text_list):
     """
-    Memory-efficient batch summarization
+    Efficiently summarize multiple texts in batch with dynamic model selection
     """
     if not summarizers:
         return {"error": "Models not available"}
     
     try:
         results = []
-        model_usage_stats = {"processed": 0}
+        model_usage_stats = {"distilbart": 0, "led": 0}
         
         for i, text in enumerate(text_list):
             logger.info(f"Processing item {i+1}/{len(text_list)}")
             result = Phoenix_Sum(text)
             results.append(result)
             
-            # Memory cleanup every 5 items
-            if i % 5 == 0:
-                cleanup_model_memory()
-            
+            # Track model usage
             if result["status"] == "success":
-                model_usage_stats["processed"] += 1
-        
-        # Final cleanup
-        cleanup_model_memory()
+                model_key = result.get("model_key", "unknown")
+                if model_key in model_usage_stats:
+                    model_usage_stats[model_key] += 1
         
         return {
             "batch_results": results,
             "total_processed": len(results),
             "successful": len([r for r in results if r["status"] == "success"]),
             "failed": len([r for r in results if r["status"] == "error"]),
-            "model_usage_stats": model_usage_stats,
-            "memory_optimized": True
+            "model_usage_stats": model_usage_stats
         }
         
     except Exception as e:
-        cleanup_model_memory()
         return {"error": str(e)}
     
+
+def test_summarization_quality():
+    """
+    Test function to evaluate summarization quality with dynamic model selection
+    """
+    # Short text test
+    short_text = """
+    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury.
+    """
+    
+    # Long text test
+    long_text = """
+    Training camp practice number six for the New York Giants is underway and it unfortunately comes with some bad news as Malik Neighbors had to leave practice with an apparent shoulder injury and we're going to react to that as we got some new information from Ian Rapaort. First though, send Malik Neighbors the good vibes. If there's any player on this team that they can't afford to get hurt, it's him, Dexter Lawrence, and Andrew Thomas. So, send leak some good vibes. Hit that thumbs up icon right now. Welcome in to New York Giants now by chat sports. I am your host Marshall Green. Let's dive into it. On Tuesday's practice, Malik Neighbors had to leave early due to a shoulder injury. At this moment, we are unsure how severe the injury is, but let's just tell you what we know. Jordan tweeting this out saying Muik Neighbors banged up on a run play on the ground for a few seconds, grabbed at his shoulder as he walked off. Something to monitor. He then followed that up by saying Malik Neighbors went into the fieldhouse with the Giants head trainer Ronnie Barnes. And then Ronnie came out outside and gave head coach Brian Dable an update. The injury occurred during a routine running play where Neighbors was participating in drills with the offensive unit. Witnesses reported that he appeared to land awkwardly after making a catch and immediately signaled to the sidelines. The training staff quickly responded and escorted him off the field for evaluation. This development is particularly concerning for Giants fans as Neighbors has been one of the standout performers during the early stages of training camp. His chemistry with the quarterback has been evident, and losing him for any extended period would be a significant blow to the team's offensive preparations for the upcoming season.
+    """ * 3  # Make it longer to trigger LED
+    
+    print("Testing short text (should use DistilBART):")
+    result_short = Phoenix_Sum(short_text)
+    print(json.dumps({
+        "model_used": result_short.get("model_used"),
+        "model_selection_reason": result_short.get("model_selection_reason"),
+        "status": result_short.get("status"),
+        "text_length": len(short_text)
+    }, indent=2))
+    
+    print("\nTesting long text (should use LED):")
+    result_long = Phoenix_Sum(long_text)
+    print(json.dumps({
+        "model_used": result_long.get("model_used"),
+        "model_selection_reason": result_long.get("model_selection_reason"), 
+        "status": result_long.get("status"),
+        "text_length": len(long_text)
+    }, indent=2))
+    
+    return {"short_test": result_short, "long_test": result_long}
+
+# Example usage and model comparison
+if __name__ == "__main__":
+    # Test the improved model
+    result = test_summarization_quality()
+    
+    print(f"\nModel: {model_name}")
+    print(f"Status: {result['status']}")
+    if result['status'] == 'success':
+        print(f"Summary: {result['summary']}")
+        print(f"Compression: {result['metrics']['compression_ratio']}")
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
