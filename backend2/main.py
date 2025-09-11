@@ -116,14 +116,14 @@ def select_optimal_model(text_length):
         tuple: (model_key, model_pipeline, model_name)
     """
     # Threshold for model selection (roughly 800 words = 4000 characters)
-    LONG_TEXT_THRESHOLD = 4000
+    # LONG_TEXT_THRESHOLD = 4000
     
-    if text_length > LONG_TEXT_THRESHOLD:
-        # Use LED for longer transcripts
-        return "led", summarizers.get("led"), model_info["led"]["name"]
-    else:
-        # Use DistilBART for shorter transcripts
-        return "distilbart", summarizers.get("distilbart"), model_info["distilbart"]["name"]
+    # if text_length > LONG_TEXT_THRESHOLD:
+    #     # Use LED for longer transcripts
+    #     return "led", summarizers.get("led"), model_info["led"]["name"]
+    # else:
+    #     # Use DistilBART for shorter transcripts
+    return "distilbart", summarizers.get("distilbart"), model_info["distilbart"]["name"]
 
 def Phoenix_Sum(news_text=None):
     """
