@@ -4,6 +4,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 import os
 
+# Import the correct cacher class from cache_transcripts.py
 from Transcripts.cache_transcripts import EnhancedNewsTranscriptCacher
 from dotenv import load_dotenv
 
@@ -74,8 +75,8 @@ def get_latest_news_direct(
     channel_id: str = "UCYPvAwZP8pZhSMW8qs7cVCw"
 ):
     """
-    Fallback function for when cache is not available
-    This is your original function, simplified
+    Enhanced fallback function for when cache is not available
+    This now includes all required fields to avoid validation errors
     """
     
     API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -116,21 +117,34 @@ def get_latest_news_direct(
         if not video_id:
             continue
 
-        title = item.get("snippet", {}).get("title", "")
-        thumbnail = item.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url", "")
+        snippet = item.get("snippet", {})
+        title = snippet.get("title", "")
+        description = snippet.get("description", "")
+        thumbnail = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
+        channel_title = snippet.get("channelTitle", "")
+        published_at = snippet.get("publishedAt", "")
         video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-        # Basic result without transcript (fallback mode)
+        # Enhanced result with ALL required fields to pass validation
         result = {
-            "title": title,
-            "genre": "default",
-            "video_url": video_url,
+            "video_id": video_id,  # REQUIRED FIELD
+            "title": title,  # REQUIRED FIELD
+            "description": description,
+            "video_url": video_url,  # REQUIRED FIELD
             "thumbnail": thumbnail,
+            "channel_id": channel_id,  # REQUIRED FIELD
+            "channel_name": channel_title,
+            "channel_url": f"https://www.youtube.com/channel/{channel_id}" if channel_id else "",
+            "published_at": published_at,
+            "genre": "general",  # Default genre
             "transcript": "Transcript not available (direct mode)",
             "transcript_language": "none",
-            "channel_id":channel_id,
+            "cached_at": datetime.utcnow(),  # Add timestamp
+            "source": "direct_fetch"  # Mark as direct fetch
         }
         results.append(result)
+        
+    print(f"Direct fetch retrieved {len(results)} items with all required fields")
     return results
 
 def get_cache_stats():
@@ -155,7 +169,7 @@ def cleanup_cache(days_old=7):
         print(f"Cache cleanup failed: {e}")
         return 0
 
-def force_refresh_cache(query="NDTV latest news", num_videos=5,channel_id="UC6RJ7-PaXg6TIH2BzZfTV7w"):
+def force_refresh_cache(query="NDTV latest news", num_videos=5, channel_id="UC6RJ7-PaXg6TIH2BzZfTV7w"):
     """Force refresh cache for testing"""
     return get_latest_news_with_caching(
         query=query,
@@ -192,5 +206,3 @@ def test_cache_system():
     print(f"Fresh results: {len(fresh_results)}")
     
     return len(results), len(fresh_results)
-
-

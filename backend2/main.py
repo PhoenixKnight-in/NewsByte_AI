@@ -50,6 +50,62 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 HUGGINGFACE_API_KEY = os.getenv("HUGGING_FACE")  # Add this to Render env vars
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Alternative
 
+
+# Add this validation function to main.py
+
+# Updated validation function
+def validate_and_fix_news_data(results, expected_channel_id):
+    """
+    Enhanced validation and fix news data before returning
+    """
+    validated_results = []
+    
+    for item in results:
+        if isinstance(item, dict):
+            # Ensure ALL required fields exist with meaningful values
+            required_fields = ['video_id', 'title', 'video_url']
+            
+            # Check if required fields exist and are not empty
+            valid_item = True
+            for field in required_fields:
+                if not item.get(field) or str(item.get(field, '')).strip() == '':
+                    logger.warning(f"Skipping invalid item missing/empty {field}: {item.get('title', 'unknown')}")
+                    valid_item = False
+                    break
+            
+            if not valid_item:
+                continue
+            
+            # Fix missing channel_id
+            if not item.get('channel_id') and expected_channel_id:
+                item['channel_id'] = expected_channel_id
+                logger.info(f"Fixed missing channel_id for video: {item.get('video_id', 'unknown')}")
+            
+            # Ensure optional fields have default values
+            defaults = {
+                'description': item.get('description', ''),
+                'thumbnail': item.get('thumbnail', ''),
+                'channel_name': item.get('channel_name', ''),
+                'channel_url': item.get('channel_url', ''),
+                'published_at': item.get('published_at', ''),
+                'genre': item.get('genre', 'general'),
+                'transcript': item.get('transcript', 'No transcript available'),
+                'transcript_language': item.get('transcript_language', 'none'),
+                'word_count': item.get('word_count', 0),
+                'cached_at': item.get('cached_at', datetime.utcnow()),
+                'source': item.get('source', 'validated')
+            }
+            
+            # Apply defaults for missing fields
+            for field, default_value in defaults.items():
+                if field not in item or item[field] is None:
+                    item[field] = default_value
+            
+            validated_results.append(item)
+    
+    logger.info(f"Validated {len(validated_results)} out of {len(results)} items")
+    return validated_results
+
 # Simple text-based summarization fallback
 def simple_extractive_summary(text: str, max_sentences: int = 3) -> str:
     """
@@ -304,7 +360,7 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
 
 # Helper function to get cached news from MongoDB with STRICT channel_id filtering
 def get_cached_news_from_db(channel_id: str = None, query: str = None, limit: int = 50, hours_back: int = 24) -> List[dict]:
-    """Retrieve cached news from MongoDB with STRICT channel_id filtering"""
+    """Retrieve cached news from MongoDB with STRICT channel_id filtering and better error handling"""
     try:
         filter_query = {}
         
@@ -358,9 +414,25 @@ def get_cached_news_from_db(channel_id: str = None, query: str = None, limit: in
             # Neither channel_id nor query provided
             filter_query = time_filter
         
-        # Execute query
-        cursor = db.news.find(filter_query).sort("cached_at", -1).limit(limit)
-        results = list(cursor)
+        # Execute query with error handling
+        try:
+            cursor = db.news.find(filter_query).sort("cached_at", -1).limit(limit)
+            results = []
+            
+            for item in cursor:
+                # Remove MongoDB ObjectId and validate basic structure
+                if '_id' in item:
+                    item.pop('_id', None)
+                
+                # Ensure item has basic required fields
+                if item.get('video_id') and item.get('title') and item.get('video_url'):
+                    results.append(item)
+                else:
+                    logger.warning(f"Skipping cached item with missing required fields: {item.get('title', 'unknown')}")
+            
+        except Exception as query_error:
+            logger.error(f"Error executing database query: {query_error}")
+            return []
         
         # Debug logging
         logger.info(f"Filter query used: {filter_query}")
@@ -371,7 +443,6 @@ def get_cached_news_from_db(channel_id: str = None, query: str = None, limit: in
         for item in results:
             if 'channel_id' in item:
                 channels_found.add(item['channel_id'])
-            item.pop('_id', None)
         
         logger.info(f"Channels in results: {channels_found}")
         
@@ -380,7 +451,7 @@ def get_cached_news_from_db(channel_id: str = None, query: str = None, limit: in
     except Exception as e:
         logger.error(f"Error retrieving cached news from DB: {e}")
         return []
-
+    
 # Helper function to get unique channels from cache
 def get_cached_channels() -> List[dict]:
     """Get list of unique channels available in cache"""
@@ -857,72 +928,100 @@ async def get_latest_news(
         force_refresh = bool(channel_id)  # Always force refresh for specific channels
         
         # Try to get fresh news first
-        results = get_latest_news_with_caching(
-            query=query,
-            num_videos_to_fetch=num_videos,
-            minutes_ago=minutes_ago,
-            channel_id=channel_id,
-            force_refresh=force_refresh,  # Use force_refresh based on channel_id
-            cache_hours=6
-        )
+        try:
+            results = get_latest_news_with_caching(
+                query=query,
+                num_videos_to_fetch=num_videos,
+                minutes_ago=minutes_ago,
+                channel_id=channel_id,
+                force_refresh=force_refresh,
+                cache_hours=6
+            )
+        except Exception as fetch_error:
+            logger.error(f"Error in get_latest_news_with_caching: {fetch_error}")
+            results = []
         
         if results and len(results) > 0:
             logger.info(f"Successfully fetched {len(results)} fresh news items")
             
-            # Validate that all results match the requested channel_id
-            if channel_id:
-                validated_results = []
-                for item in results:
-                    if isinstance(item, dict) and item.get('channel_id') == channel_id:
-                        item["cached_at"] = datetime.utcnow()
-                        item["source"] = "fresh"
-                        validated_results.append(item)
+            # CRITICAL FIX: Validate and fix data before filtering
+            results = validate_and_fix_news_data(results, channel_id)
+            
+            # Additional validation - filter out any items that still don't meet requirements
+            final_results = []
+            for item in results:
+                # Double-check that item has all required fields after validation
+                if (item.get('video_id') and 
+                    item.get('title') and 
+                    item.get('video_url')):
+                    
+                    # Validate that all results match the requested channel_id (if specified)
+                    if channel_id:
+                        if item.get('channel_id') == channel_id:
+                            final_results.append(item)
+                        else:
+                            logger.warning(f"Filtered out item from wrong channel: got {item.get('channel_id')}, expected {channel_id}")
                     else:
-                        logger.warning(f"Filtered out item from wrong channel: got {item.get('channel_id')}, expected {channel_id}")
-                
-                results = validated_results
-            else:
-                # No channel_id specified, accept all results
-                for item in results:
-                    if isinstance(item, dict):
-                        item["cached_at"] = datetime.utcnow()
-                        item["source"] = "fresh"
+                        # No channel_id specified, accept all valid results
+                        final_results.append(item)
+                else:
+                    logger.warning(f"Item still invalid after validation: {item.get('title', 'unknown')}")
+            
+            results = final_results
             
             # Save to MongoDB (handle duplicates)
             if results:
                 try:
-                    db.news.insert_many(results, ordered=False)
-                    logger.info(f"Saved {len(results)} items to MongoDB")
+                    saved_count = 0
+                    for item in results:
+                        try:
+                            # Use upsert to handle duplicates
+                            db.news.replace_one(
+                                {"video_id": item.get("video_id")},
+                                item,
+                                upsert=True
+                            )
+                            saved_count += 1
+                        except Exception as save_item_error:
+                            logger.warning(f"Error saving individual item {item.get('video_id', 'unknown')}: {save_item_error}")
+                    
+                    logger.info(f"Saved/updated {saved_count} items to MongoDB")
                 except Exception as save_error:
-                    logger.warning(f"Some items may already exist in DB: {save_error}")
+                    logger.warning(f"Error saving to database: {save_error}")
             
             return results
         else:
             # If no fresh results, fall back to cached data with STRICT channel_id filtering
             logger.warning("No fresh results found, falling back to cached data")
-            if not channel_id:
-                raise Exception("No fresh data available and no channel_id for cache lookup")
             
-            # Get cached data with STRICT filtering
-            cached_results = get_cached_news_from_db(
-                channel_id=channel_id, 
-                query=None,  # Don't use query for fallback to get more results
-                limit=num_videos
-            )
-            
-            if cached_results:
-                logger.info(f"Successfully retrieved {len(cached_results)} cached items for channel {channel_id}")
+            if channel_id:
+                # Get cached data with STRICT filtering
+                cached_results = get_cached_news_from_db(
+                    channel_id=channel_id, 
+                    query=None,  # Don't use query for fallback to get more results
+                    limit=num_videos
+                )
                 
-                # Mark as cached source and validate channel
-                validated_cached = []
-                for item in cached_results:
-                    if item.get('channel_id') == channel_id:
-                        item["source"] = "cached"
-                        validated_cached.append(item)
-                
-                return validated_cached
+                if cached_results:
+                    logger.info(f"Successfully retrieved {len(cached_results)} cached items for channel {channel_id}")
+                    
+                    # Validate cached results too
+                    cached_results = validate_and_fix_news_data(cached_results, channel_id)
+                    
+                    # Mark as cached source and validate channel
+                    validated_cached = []
+                    for item in cached_results:
+                        if item.get('channel_id') == channel_id:
+                            item["source"] = "cached"
+                            validated_cached.append(item)
+                    
+                    return validated_cached
+                else:
+                    logger.error(f"No cached data available for channel {channel_id}")
+                    return []
             else:
-                logger.error(f"No cached data available for channel {channel_id}")
+                # No channel_id and no fresh data
+                logger.warning("No channel_id specified and no fresh data available")
                 return []
             
     except Exception as e:
@@ -931,27 +1030,33 @@ async def get_latest_news(
         # Final fallback to cached data from MongoDB with STRICT channel_id filtering
         if channel_id:
             logger.info(f"Final fallback to cached news for channel {channel_id}")
-            cached_results = get_cached_news_from_db(
-                channel_id=channel_id, 
-                query=None, 
-                limit=num_videos
-            )
-            
-            if cached_results:
-                logger.info(f"Final fallback: retrieved {len(cached_results)} cached items")
+            try:
+                cached_results = get_cached_news_from_db(
+                    channel_id=channel_id, 
+                    query=None, 
+                    limit=num_videos
+                )
                 
-                # Double-check channel validation
-                final_results = []
-                for item in cached_results:
-                    if item.get('channel_id') == channel_id:
-                        item["source"] = "cached_fallback"
-                        final_results.append(item)
-                
-                return final_results
+                if cached_results:
+                    logger.info(f"Final fallback: retrieved {len(cached_results)} cached items")
+                    
+                    # Validate fallback results
+                    cached_results = validate_and_fix_news_data(cached_results, channel_id)
+                    
+                    # Double-check channel validation
+                    final_results = []
+                    for item in cached_results:
+                        if item.get('channel_id') == channel_id:
+                            item["source"] = "cached_fallback"
+                            final_results.append(item)
+                    
+                    return final_results
+            except Exception as fallback_error:
+                logger.error(f"Final fallback also failed: {fallback_error}")
         
         logger.error("All fallback attempts failed")
         return []
-    
+
 @app.get("/get_saved_news", response_model=List[NewsItem])
 async def get_saved_news(
     channel_id: str | None = None,

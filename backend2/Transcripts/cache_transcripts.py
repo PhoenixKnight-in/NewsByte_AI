@@ -146,12 +146,16 @@ class EnhancedNewsTranscriptCacher:
         self.content_filter = EnhancedNewsFilter()  # Initialize filter
         
         # Create indexes for better performance
-        self.collection.create_index("video_url")
-        self.collection.create_index("cached_at")
-        self.collection.create_index("title")
-        self.collection.create_index([("cached_at", -1), ("genre", 1)])
-        
-        print(f"Connected to MongoDB: {database_name}.{collection_name}")
+        try:
+            self.collection.create_index("video_url")
+            self.collection.create_index("cached_at")
+            self.collection.create_index("title")
+            self.collection.create_index("video_id")  # Add video_id index
+            self.collection.create_index("channel_id")  # Add channel_id index
+            self.collection.create_index([("cached_at", -1), ("genre", 1)])
+            print(f"Connected to MongoDB: {database_name}.{collection_name}")
+        except Exception as e:
+            print(f"Warning: Could not create indexes: {e}")
     
     def detect_genre(self, text):
         text = text.lower()
@@ -169,24 +173,25 @@ class EnhancedNewsTranscriptCacher:
             return 'general'
     
     def is_short(self, video_id, API_KEY):
-        video_url = (
-            f"https://www.googleapis.com/youtube/v3/videos?part=contentDetails"
-            f"&id={video_id}&key={API_KEY}"
-        )
-        res = requests.get(video_url)
-        if res.status_code != 200:
-            print(f"[is_short] failed to fetch contentDetails for {video_id}")
-            return True
-
-        items = res.json().get("items", [])
-        if not items:
-            return True
-
-        duration = items[0]["contentDetails"].get("duration", "")
         try:
+            video_url = (
+                f"https://www.googleapis.com/youtube/v3/videos?part=contentDetails"
+                f"&id={video_id}&key={API_KEY}"
+            )
+            res = requests.get(video_url)
+            if res.status_code != 200:
+                print(f"[is_short] failed to fetch contentDetails for {video_id}")
+                return True
+
+            items = res.json().get("items", [])
+            if not items:
+                return True
+
+            duration = items[0]["contentDetails"].get("duration", "")
             parsed_duration = isodate.parse_duration(duration)
             return parsed_duration.total_seconds() < 60
         except Exception as e:
+            print(f"Error checking video duration: {e}")
             return True
     
     def get_video_id_from_url(self, video_url):
@@ -241,7 +246,8 @@ class EnhancedNewsTranscriptCacher:
             else:
                 print(f"[skip] Transcript mostly music/repetitive: {video_id}")
                 return None, None, None
-            
+                
+        except:
             # Try any available language
             try:
                 transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
@@ -271,13 +277,6 @@ class EnhancedNewsTranscriptCacher:
                         continue
             except:
                 pass
-        
-        except Exception as e:
-            if "blocked" in str(e).lower():
-                print(f"[transcript] IP blocked for {video_id}")
-                time.sleep(random.uniform(10, 20))
-            else:
-                print(f"[transcript] error on {video_id}: {e}")
         
         return None, None, None
     
@@ -309,8 +308,9 @@ class EnhancedNewsTranscriptCacher:
     def get_cached_news(self, 
                        hours_old=24, 
                        genres=None, 
-                       limit=50):
-        """Retrieve cached news from MongoDB"""
+                       limit=50,
+                       channel_id=None):
+        """Retrieve cached news from MongoDB with optional channel filtering"""
         
         # Build query
         query = {}
@@ -319,13 +319,22 @@ class EnhancedNewsTranscriptCacher:
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_old)
         query["cached_at"] = {"$gte": cutoff_time}
         
+        # Filter by channel_id if specified
+        if channel_id:
+            query["channel_id"] = {"$eq": channel_id}
+        
         # Filter by genres if specified
         if genres:
             query["genre"] = {"$in": genres}
         
         try:
             cursor = self.collection.find(query).sort("cached_at", -1).limit(limit)
-            results = list(cursor)
+            results = []
+            
+            for item in cursor:
+                # Remove MongoDB ObjectId
+                item.pop('_id', None)
+                results.append(item)
             
             print(f"[cache] Retrieved {len(results)} cached news items")
             return results
@@ -353,7 +362,11 @@ class EnhancedNewsTranscriptCacher:
         
         # If not forcing refresh, try to get cached data first
         if not force_refresh:
-            cached_results = self.get_cached_news(hours_old=cache_hours, limit=num_videos_to_fetch)
+            cached_results = self.get_cached_news(
+                hours_old=cache_hours, 
+                limit=num_videos_to_fetch,
+                channel_id=channel_id
+            )
             if len(cached_results) >= num_videos_to_fetch:
                 print(f"[cache] Using {len(cached_results)} cached results")
                 return cached_results
@@ -381,7 +394,7 @@ class EnhancedNewsTranscriptCacher:
         resp = requests.get(search_url, params=params)
         if resp.status_code != 200:
             print(f"[search] failed: {resp.status_code}")
-            return self.get_cached_news(hours_old=24, limit=num_videos_to_fetch)
+            return self.get_cached_news(hours_old=24, limit=num_videos_to_fetch, channel_id=channel_id)
 
         data = resp.json()
         items = data.get("items", [])
@@ -405,6 +418,8 @@ class EnhancedNewsTranscriptCacher:
             title = snippet.get("title", "")
             description = snippet.get("description", "")
             thumbnail = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
+            channel_title = snippet.get("channelTitle", "")
+            published_at = snippet.get("publishedAt", "")
             video_url = f"https://www.youtube.com/watch?v={video_id}"
             
             print(f"Processing {processed_count}: {title[:50]}...")
@@ -414,6 +429,8 @@ class EnhancedNewsTranscriptCacher:
             
             if is_fresh:
                 print(f"[cache] Using cached data for {video_id}")
+                # Remove _id if present
+                cached_data.pop('_id', None)
                 new_results.append(cached_data)
                 continue
 
@@ -433,8 +450,27 @@ class EnhancedNewsTranscriptCacher:
             api_calls_made += 1
             
             if not transcript_data or not cleaned_transcript:
-                print(f"[skip] No meaningful transcript: {video_id}")
-                skipped_music += 1
+                # Create result without transcript but with all required fields
+                result = {
+                    "video_id": video_id,
+                    "title": title,
+                    "description": description,
+                    "video_url": video_url,
+                    "thumbnail": thumbnail,
+                    "channel_id": channel_id,
+                    "channel_name": channel_title,
+                    "channel_url": f"https://www.youtube.com/channel/{channel_id}" if channel_id else "",
+                    "published_at": published_at,
+                    "genre": "general",
+                    "transcript": "No meaningful transcript available",
+                    "transcript_language": "none",
+                    "word_count": 0
+                }
+                
+                # Still cache it for future reference
+                if self.cache_video_data(result):
+                    new_results.append(result)
+                    print(f"[cached] {video_id} (no transcript) - Total: {len(new_results)}")
                 continue
 
             # Final word count check
@@ -447,13 +483,18 @@ class EnhancedNewsTranscriptCacher:
             
             # Create result object with cleaned transcript
             result = {
+                "video_id": video_id,
                 "title": title,
-                "genre": genre,
+                "description": description,
                 "video_url": video_url,
                 "thumbnail": thumbnail,
+                "channel_id": channel_id,
+                "channel_name": channel_title,
+                "channel_url": f"https://www.youtube.com/channel/{channel_id}" if channel_id else "",
+                "published_at": published_at,
+                "genre": genre,
                 "transcript": cleaned_transcript,  # Use cleaned transcript
                 "transcript_language": language,
-                "video_id": video_id,
                 "word_count": word_count
             }
             
@@ -469,7 +510,8 @@ class EnhancedNewsTranscriptCacher:
         if len(new_results) < num_videos_to_fetch:
             additional_cached = self.get_cached_news(
                 hours_old=24, 
-                limit=num_videos_to_fetch - len(new_results)
+                limit=num_videos_to_fetch - len(new_results),
+                channel_id=channel_id
             )
             # Avoid duplicates
             existing_urls = {r.get("video_url") for r in new_results}
@@ -516,16 +558,25 @@ class EnhancedNewsTranscriptCacher:
                 "cached_at": {"$gte": recent_cutoff}
             })
             
+            # Count by channel
+            channel_pipeline = [
+                {"$group": {"_id": "$channel_id", "count": {"$sum": 1}, "channel_name": {"$first": "$channel_name"}}},
+                {"$sort": {"count": -1}}
+            ]
+            channel_stats = list(self.collection.aggregate(channel_pipeline))
+            
             stats = {
                 "total_cached_videos": total_docs,
                 "recent_cache_entries": recent_count,
-                "genre_distribution": {item["_id"]: item["count"] for item in genre_stats}
+                "genre_distribution": {item["_id"]: item["count"] for item in genre_stats},
+                "channel_distribution": {f"{item['_id']} ({item.get('channel_name', 'Unknown')})": item["count"] for item in channel_stats}
             }
             
             print(f"=== CACHE STATS ===")
             print(f"Total cached videos: {stats['total_cached_videos']}")
             print(f"Recent entries (24h): {stats['recent_cache_entries']}")
             print(f"Genre distribution: {stats['genre_distribution']}")
+            print(f"Channel distribution: {stats['channel_distribution']}")
             
             return stats
             
@@ -575,11 +626,11 @@ def test_enhanced_filter():
 # Usage example
 if __name__ == "__main__":
     # Test the filter
-    print("🧪 Testing Enhanced Filter...")
+    print("Testing Enhanced Filter...")
     test_enhanced_filter()
     
     print("\n" + "="*50)
-    print("🚀 Using Enhanced Cacher")
+    print("Using Enhanced Cacher")
     
     # Use the enhanced cacher
     try:
@@ -594,12 +645,12 @@ if __name__ == "__main__":
             cache_hours=6
         )
         
-        print(f"\n📊 Final Results: {len(results)} videos")
+        print(f"\nFinal Results: {len(results)} videos")
         
         # Display first result as example
         if results:
             first_result = results[0]
-            print(f"\n📰 Sample result:")
+            print(f"\nSample result:")
             print(f"Title: {first_result.get('title', '')[:100]}...")
             print(f"Genre: {first_result.get('genre', 'Unknown')}")
             print(f"Words: {first_result.get('word_count', 0)}")

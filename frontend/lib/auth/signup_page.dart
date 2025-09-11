@@ -71,34 +71,40 @@ class _SignupPageState extends State<SignupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xFFF2F4F8),
-      body: Padding(
-        padding: const EdgeInsets.only(top: 50.0, left: 15, right: 15),
-        child: Center(
+      resizeToAvoidBottomInset: true, // Important: Allow scaffold to resize
+      body: SingleChildScrollView( // Wrap body with SingleChildScrollView
+        child: Padding(
+          padding: const EdgeInsets.only(top: 50.0, left: 15, right: 15, bottom: 20),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.05), // Dynamic spacing
               ClipRRect(
                 borderRadius: BorderRadius.circular(125),
-                child: Image.asset('assets/logo.png', height: 250),
+                child: Image.asset(
+                  'assets/logo.png', 
+                  height: 180, // Reduced height for better spacing (signup has more fields)
+                ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               Text(
                 "Sign Up. To get",
                 style: TextStyle(
-                  fontSize: 40,
+                  fontSize: 34, // Slightly reduced for better fit
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF21005D),
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 10),
               Text(
                 "Instant News from NewsByte",
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 18, // Slightly reduced for better fit
                   fontWeight: FontWeight.bold,
                   color: Color(0xFFFF7B07),
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 25),
               CustomField(hint_text: "Username", controller: nameController),
               const SizedBox(height: 15),
               CustomField(hint_text: "Email", controller: emailController),
@@ -108,9 +114,9 @@ class _SignupPageState extends State<SignupPage> {
                 controller: passwordController,
                 isObscureText: true,
               ),
-              const SizedBox(height: 15.0),
+              const SizedBox(height: 25),
               AuthButton(button_text: "Sign Up", onTap: signupUser),
-              const SizedBox(height: 15.0),
+              const SizedBox(height: 20),
               GestureDetector(
                 onTap: () {
                   Navigator.pushReplacement(
@@ -131,6 +137,7 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                 ),
               ),
+              SizedBox(height: MediaQuery.of(context).viewInsets.bottom), // Add bottom padding for keyboard
             ],
           ),
         ),
