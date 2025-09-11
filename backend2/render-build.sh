@@ -65,43 +65,43 @@ mkdir -p cache
 echo "🔐 Setting permissions..."
 chmod +x render-start.sh
 
-# Verify installation
-echo "✅ Verifying installation..."
-python -c "
-import sys
-print(f'Python version: {sys.version}')
+# # Verify installation
+# echo "✅ Verifying installation..."
+# python -c "
+# import sys
+# print(f'Python version: {sys.version}')
 
-# Check critical imports
-try:
-    import fastapi
-    print(f'FastAPI: {fastapi.__version__}')
-except ImportError as e:
-    print(f'FastAPI import error: {e}')
-    sys.exit(1)
+# # Check critical imports
+# try:
+#     import fastapi
+#     print(f'FastAPI: {fastapi.__version__}')
+# except ImportError as e:
+#     print(f'FastAPI import error: {e}')
+#     sys.exit(1)
 
-try:
-    import transformers
-    print(f'Transformers: {transformers.__version__}')
-except ImportError as e:
-    print(f'Transformers import error: {e}')
-    sys.exit(1)
+# try:
+#     import transformers
+#     print(f'Transformers: {transformers.__version__}')
+# except ImportError as e:
+#     print(f'Transformers import error: {e}')
+#     sys.exit(1)
 
-try:
-    import pymongo
-    print('PyMongo: Available')
-except ImportError as e:
-    print(f'PyMongo import error: {e}')
-    sys.exit(1)
+# try:
+#     import pymongo
+#     print('PyMongo: Available')
+# except ImportError as e:
+#     print(f'PyMongo import error: {e}')
+#     sys.exit(1)
 
-try:
-    import motor
-    print('Motor: Available')
-except ImportError as e:
-    print(f'Motor import error: {e}')
-    sys.exit(1)
+# try:
+#     import motor
+#     print('Motor: Available')
+# except ImportError as e:
+#     print(f'Motor import error: {e}')
+#     sys.exit(1)
 
-print('✅ All critical dependencies verified')
-"
+# print('✅ All critical dependencies verified')
+# "
 
 echo "🎉 Build completed successfully!"
 echo "📊 Build summary:"

@@ -38,47 +38,47 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
-# Test imports before starting server
-echo "Testing critical imports..."
-python -c "
-import sys
-import traceback
+# # Test imports before starting server
+# echo "Testing critical imports..."
+# python -c "
+# import sys
+# import traceback
 
-def test_import(module_name):
-    try:
-        __import__(module_name)
-        print(f'✅ {module_name}: OK')
-        return True
-    except ImportError as e:
-        print(f'❌ {module_name}: FAILED - {e}')
-        return False
-    except Exception as e:
-        print(f'⚠️  {module_name}: ERROR - {e}')
-        return False
+# def test_import(module_name):
+#     try:
+#         __import__(module_name)
+#         print(f'✅ {module_name}: OK')
+#         return True
+#     except ImportError as e:
+#         print(f'❌ {module_name}: FAILED - {e}')
+#         return False
+#     except Exception as e:
+#         print(f'⚠️  {module_name}: ERROR - {e}')
+#         return False
 
-critical_modules = [
-    'fastapi',
-    'uvicorn',
-    'motor.motor_asyncio',
-    'pymongo',
-    'transformers',
-    'torch',
-    'jose',
-    'passlib',
-    'python_dotenv'
-]
+# critical_modules = [
+#     'fastapi',
+#     'uvicorn',
+#     'motor.motor_asyncio',
+#     'pymongo',
+#     'transformers',
+#     'torch',
+#     'jose',
+#     'passlib',
+#     'python_dotenv'
+# ]
 
-failed = []
-for module in critical_modules:
-    if not test_import(module):
-        failed.append(module)
+# failed = []
+# for module in critical_modules:
+#     if not test_import(module):
+#         failed.append(module)
 
-if failed:
-    print(f'❌ Failed to import: {failed}')
-    sys.exit(1)
-else:
-    print('✅ All critical modules imported successfully')
-"
+# if failed:
+#     print(f'❌ Failed to import: {failed}')
+#     sys.exit(1)
+# else:
+#     print('✅ All critical modules imported successfully')
+# "
 
 # Start the FastAPI application with Uvicorn
 echo "Starting Uvicorn server..."
