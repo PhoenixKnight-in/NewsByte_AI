@@ -49,111 +49,110 @@ git clone https://github.com/<your_username>/NewsByte_AI
 cd NewsByte_AI/backend2
 ```
 
-Create a virtual environment
+2. **Create a virtual environment**
 ```
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
-Install dependencies
+3. **Install dependencies**
 ```
 pip install -r requirements.txt
 ```
-Add environment variables
-Create a .env file inside backend/:
+4. **Add environment variables**
+- Create a .env file inside backend/:
 ```
 YOUTUBE_API_KEY=your_youtube_api_key
-
 OPENAI_API_KEY=your_openai_api_key
 ```
-Run the backend
+5. **Run the backend**
 ```
 uvicorn main:app --reload
 ```
-Backend will start at:
+6. **Backend will start at:**
 
 http://127.0.0.1:8000
 
 ## 📱 Frontend Setup (Flutter)
-Navigate to the frontend folder
+
+1. **Navigate to the frontend folder**
 ```
 cd ../frontend
 ```
-Install dependencies
+2. **Install dependencies**
 ```
 flutter pub get
 ```
-Update API base URL
+3. **Update API base URL**
 In api_service.dart:
 
 const String serverUrl = "http://127.0.0.1:8000";
 
-Run the Flutter app
+4. **Run the Flutter app**
 ```
 flutter run
 ```
 ## 💻 Technologies Used
 Backend:
 
-Python, FastAPI
+- Python, FastAPI
 
-YouTube Data API
+- YouTube Data API
 
-YouTube Transcript API
+- YouTube Transcript API
 
-OpenAI API (text summarization)
+- OpenAI API (text summarization)
 
-Hugging Face BART-Large-CNN model
+- Hugging Face BART-Large-CNN model
 
 Frontend:
 
-Flutter, Dart
+- Flutter, Dart
 
-SharedPreferences for local storage
+- SharedPreferences for local storage
 
 Database:
 
-MongoDB (for storing generated summaries)
+- MongoDB (for storing generated summaries)
 
 Others:
 
-REST API communication
+- REST API communication
 
-Render hosting for backend
+- Render hosting for backend
 
 ## 🚀 How It Works
 
-Home page displays news articles via GNews.io API.
+- Home page displays news articles via GNews.io API.
 
-User selects a preferred news channel from Explore Channels.
+- User selects a preferred news channel from Explore Channels.
 
-Frontend requests the latest videos from the backend.
+- Frontend requests the latest videos from the backend.
 
-Backend fetches video details via YouTube Data API.
+- Backend fetches video details via YouTube Data API.
 
-Backend retrieves transcripts using YouTube Transcript API.
+- Backend retrieves transcripts using YouTube Transcript API.
 
-Summarization is done using OpenAI API and Hugging Face BART-Large-CNN model.
+- Summarization is done using OpenAI API and Hugging Face BART-Large-CNN model.
 
-Generated summary is stored in the database.
+- Generated summary is stored in the database.
 
-Frontend displays video + summary, with offline caching via SharedPreferences.
+- Frontend displays video + summary, with offline caching via SharedPreferences.
 
 ## 🌐 Deployment on Render
 
-Create a new Web Service on Render
-.
+### Create a new Web Service on Render
 
-Connect your GitHub repository.
+- Connect your GitHub repository.
 
-Set Root Directory to backend2.
+- Set Root Directory to backend2.
 
-Add a Procfile in backend2/:
+- Add a Procfile in backend2/:
 
 web:
 ```
 uvicorn main:app --host 0.0.0.0 --port 10000
 ```
-Ensure requirements.txt exists in backend2/.
+- Ensure requirements.txt exists in backend2/.
 
 Set environment variables in Render Dashboard → Environment:
 ```
