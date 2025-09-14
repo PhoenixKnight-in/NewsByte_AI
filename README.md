@@ -12,7 +12,8 @@ The app uses **YouTube Data API**, **YouTube Transcript API**, **GNews.io API** 
 - **Poojikasri** – Frontend Developer
 - **Udiksha Agarwal** – YouTube API & Transcript Retrieval
 - **laya** - Authentication
-- **Tanay** - Database creation 
+- **Tanay** - Database creation
+- **Yashvendra** -AI Summarization
 ---
 
 ## Project Preview
