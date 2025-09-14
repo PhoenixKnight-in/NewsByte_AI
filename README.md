@@ -9,8 +9,10 @@ The app uses **YouTube Data API**, **YouTube Transcript API**, **GNews.io API** 
 
 ### 👥 Team AINEWSUM
 - **Parthiban M** (Team Lead) – Integration of frontend, backend, database, and deployment, AI Summarization ,Mongodb (database creation),cache system created
-- **Poojikasri** – Frontend Developer  
+- **Poojikasri** – Frontend Developer
 - **Udiksha Agarwal** – YouTube API & Transcript Retrieval
+- **laya** - Authentication
+- **Tanay** - Database creation 
 ---
 
 ## Project Preview
